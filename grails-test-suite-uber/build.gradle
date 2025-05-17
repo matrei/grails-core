@@ -103,8 +103,8 @@ def isolatedTestPatterns = [
 ]
 
 isolatedTestPatterns.keySet().each { taskName ->
-    tasks.register(taskName, Test).configure { Test tTask ->
-        tTask.onlyIf {
+    tasks.register(taskName, Test) {
+        onlyIf {
             ![
                     'onlyFunctionalTests',
                     'onlyHibernate5Tests',
@@ -115,12 +115,12 @@ isolatedTestPatterns.keySet().each { taskName ->
                 project.hasProperty(it)
             }
         }
-        tTask.group = 'verification'
-        tTask.filter.includePatterns = isolatedTestPatterns[taskName]
+        group = 'verification'
+        filter.includePatterns = isolatedTestPatterns[taskName]
     }
 }
 
-tasks.named('isolatedTestsTwo', Test).configure {
+tasks.named('isolatedTestsTwo', Test) {
     maxParallelForks = 1
     forkEvery = 100
 }
@@ -146,7 +146,7 @@ tasks.withType(Test).configureEach {
     jvmArgs('--add-opens=java.base/java.lang=ALL-UNNAMED', '--add-opens=java.base/java.util=ALL-UNNAMED')
 }
 
-tasks.named('test', Test).configure {
+tasks.named('test', Test) {
     onlyIf {
         ![
                 'onlyFunctionalTests',

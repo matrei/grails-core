@@ -33,7 +33,7 @@ ext {
     includeInApiDocs = true
 }
 
-tasks.named('groovydoc', Groovydoc).configure {
+tasks.named('groovydoc', Groovydoc) {
     classpath = configurations.documentation
     groovyClasspath = configurations.documentation
     access = GroovydocAccess.PROTECTED
@@ -43,7 +43,7 @@ tasks.named('groovydoc', Groovydoc).configure {
     destinationDir = project.file('build/docs/api')
 }
 
-tasks.named('javadoc', Javadoc).configure { Javadoc it ->
+tasks.named('javadoc', Javadoc) {
     (it.options as StandardJavadocDocletOptions).with {
         encoding = 'UTF-8'
         docEncoding = 'UTF-8'
@@ -53,6 +53,6 @@ tasks.named('javadoc', Javadoc).configure { Javadoc it ->
     }
 }
 
-tasks.named('build').configure {
+tasks.named('build') {
     finalizedBy('groovydoc')
 }

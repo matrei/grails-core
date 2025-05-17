@@ -21,12 +21,7 @@ import org.gradle.api.internal.plugins.StartScriptGenerator
 import org.gradle.api.internal.plugins.UnixStartScriptGenerator
 import org.gradle.api.internal.plugins.WindowsStartScriptGenerator
 
-tasks.register('collectCliDependencies').configure {
-    ext {
-        baseCachesDir = "$gradle.gradleUserHomeDir/caches"
-        cacheDir = "$baseCachesDir/modules-2"
-        metadata = "$cacheDir/metadata-2.1/descriptors"
-    }
+tasks.register('collectCliDependencies') {
     doLast {
         def projectNames = subprojects*.name
         def seen = []
@@ -37,7 +32,7 @@ tasks.register('collectCliDependencies').configure {
                 def dependency = artifact.moduleVersion.id
                 if (!projectNames.contains(dependency.name)) {
                     syncCliDependencies.into("$dependency.group/$dependency.name/jars") {
-                        from artifact.file // this will trigger the actual download if necessary
+                        from(artifact.file) // this will trigger the actual download if necessary
                     }
                 }
             }
@@ -45,21 +40,23 @@ tasks.register('collectCliDependencies').configure {
     }
 }
 
-tasks.register('syncCliDependencies', Sync).configure {
-    dependsOn 'collectCliDependencies'
-    into homeLibDir
+tasks.register('syncCliDependencies', Sync) {
+    dependsOn(tasks.named('collectCliDependencies'))
+    into(homeLibDir)
     includeEmptyDirs = false
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
 
-tasks.register('grailsCreateStartScripts', GrailsCreateStartScripts).configure {
+tasks.register('grailsCreateStartScripts', GrailsCreateStartScripts) {
     description = 'Creates OS specific scripts to run grails-shell as a JVM application.'
     mainClass = 'org.grails.cli.GrailsCli'
     applicationName = 'grails'
     defaultJvmOpts = ['-XX:+TieredCompilation', '-XX:TieredStopAtLevel=1', '-XX:CICompilerCount=3']
     outputDir = rootProject.layout.projectDirectory.dir('bin').asFile
     classpath = rootProject.childProjects['grails-shell-cli'].configurations.runtimeClasspath
-    projectArtifacts = rootProject.childProjects['grails-shell-cli'].tasks.named('jar').get().outputs.files.collect { "dist/${it.name}" } as List<String>
+    projectArtifacts = rootProject.childProjects['grails-shell-cli'].tasks.named('jar').get().outputs.files.collect {
+        "dist/$it.name"
+    } as List<String>
     doLast {
         ant.replace(file: rootProject.layout.projectDirectory.file('bin/grails').asFile, token: 'media/gradle.icns', value: 'media/icons/grails.icns')
         ant.chmod(file: rootProject.layout.projectDirectory.file('bin/grails').asFile, perm: 'ugo+rx')
@@ -73,7 +70,7 @@ class GrailsCreateStartScripts extends CreateStartScripts {
 
     @TaskAction
     void generate() {
-        Project grailsShellProject = project.rootProject.childProjects['grails-shell-cli']
+        Project grailsShellProject = rootProject.childProjects['grails-shell-cli']
         def unixStartScriptGenerator = new UnixStartScriptGenerator()
         unixStartScriptGenerator.template = grailsShellProject.resources.text.fromFile('src/main/resources/unixStartScript.txt')
         def generator = new StartScriptGenerator(unixStartScriptGenerator, new WindowsStartScriptGenerator())
@@ -90,38 +87,36 @@ class GrailsCreateStartScripts extends CreateStartScripts {
             }
             installedFile
         }
-        generator.scriptRelPath = "bin/${unixScript.name}"
+        generator.scriptRelPath = "bin/$unixScript.name"
         generator.generateUnixScript(unixScript)
         generator.generateWindowsScript(windowsScript)
     }
 }
 
-tasks.register('install').configure { task ->
-    dependsOn 'syncCliDependencies', 'grailsCreateStartScripts'
-    subprojects { Project subproject ->
-        if (!(subproject.name in testProjects) && !(subproject.name in docProjects) && !(subproject.name in cliProjects) && !(subproject.name in profileProjects)) {
-            task.dependsOn("$subproject.name:publishToMavenLocal")
+tasks.register('install') { Task installTask ->
+    installTask.dependsOn('syncCliDependencies', 'grailsCreateStartScripts')
+    subprojects {
+        if (!(name in testProjects) && !(name in docProjects) && !(name in cliProjects) && !(name in profileProjects)) {
+            installTask.dependsOn("$name:publishToMavenLocal")
         }
     }
 }
 
-tasks.register('assemble', Zip).configure {
+tasks.register('assemble', Zip) {
+    dependsOn('install')
     group = 'build'
-    dependsOn 'install'
     destinationDirectory = rootProject.layout.buildDirectory.dir('distributions')
     archiveBaseName = 'grails'
     archiveAppendix = grailsVersion
 
-    exclude '**/CVS/**'
+    exclude('**/CVS/**')
 
     into("grails-$grailsVersion") {
         from(rootProject.layout.projectDirectory) {
             // Some of these are probably not needed as they are not present in the project folder
-            include 'bin/grails', 'bin/grails.bat', 'lib/', 'media/', 'samples/', 'scripts/', 'LICENSE', 'INSTALL'
+            include('bin/grails', 'bin/grails.bat', 'lib/', 'media/', 'samples/', 'scripts/', 'LICENSE', 'INSTALL')
 
-            def pathsToExclude = [
-                    'ant/bin', 'src/grails', 'src/war'
-            ]
+            def pathsToExclude = ['ant/bin', 'src/grails', 'src/war']
             docProjects.each { projectName ->
                 pathsToExclude << rootProject.projectDir.relativePath(project(projectName as String).projectDir)
             }
@@ -131,11 +126,11 @@ tasks.register('assemble', Zip).configure {
             cliProjects.each { projectName ->
                 pathsToExclude << rootProject.projectDir.relativePath(project(projectName as String).projectDir)
             }
-            exclude pathsToExclude
+            exclude(pathsToExclude)
         }
         from(homeDistDir) {
-            into 'dist'
-            exclude '*.zip'
+            into('dist')
+            exclude('*.zip')
         }
     }
 }

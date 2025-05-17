@@ -100,7 +100,7 @@ bootRun {
     systemProperty springProfilesActive, System.getProperty(springProfilesActive)
 }
 
-tasks.named('assetCompile').configure {
+tasks.named('assetCompile') {
     // No need to compile assets in functional tests
     enabled = false
 }

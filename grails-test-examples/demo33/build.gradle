@@ -71,8 +71,8 @@ dependencies {
     testImplementation 'org.apache.grails:grails-testing-support-datamapping'
 }
 
-tasks.named('compileTestGroovy').configure {
-    dependsOn 'compileGsonViews'
+tasks.named('compileTestGroovy') {
+    dependsOn('compileGsonViews')
 }
 
 apply {

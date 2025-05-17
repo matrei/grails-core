@@ -22,15 +22,15 @@ import java.time.format.DateTimeFormatter
  */
 
 ext {
-    buildInstant = java.util.Optional.ofNullable(System.getenv("SOURCE_DATE_EPOCH"))
+    buildInstant = java.util.Optional.ofNullable(System.getenv('SOURCE_DATE_EPOCH'))
             .map(Long::parseLong)
             .map(Instant::ofEpochSecond)
-            .orElseGet(Instant::now)
+            .orElseGet(Instant::now) as Instant
     formattedBuildDate = DateTimeFormatter.ISO_INSTANT.format(buildInstant)
     buildDate = (buildInstant as Instant).atZone(ZoneOffset.UTC) // for reproducible builds
 
     grailsVersion = projectVersion
-    isCiBuild = System.getenv().get('CI') as Boolean
+    isCiBuild = System.getenv().containsKey('CI')
     configuredTestParallel = findProperty('maxTestParallel') as Integer ?: (isCiBuild ? 3 : Runtime.runtime.availableProcessors() * 3 / 4 as int ?: 1)
     excludeUnusedTransDeps = findProperty('excludeUnusedTransDeps')
 
@@ -93,9 +93,8 @@ subprojects {
     apply from: rootProject.layout.projectDirectory.file('gradle/dependency-licenses.gradle')
 }
 
-tasks.register('clean', Delete).configure {
+tasks.register('clean', Delete) {
     group = 'build'
-
     doFirst {
         delete(layout.buildDirectory, homeBinDir, homeConfDir, homeDistDir, homeLibDir)
     }

@@ -45,56 +45,55 @@ apply {
 // It's surprisingly hard to generate start scripts and *not* have them nested into a bin / lib directory
 // rather than defining the application and then having to add tasks to rework it, just define a distribution and
 // create the scripts in the right location from the start
-TaskProvider<Jar> jarTask = tasks.named('jar', Jar)
-jarTask.configure { Jar it ->
-    it.archiveFileName = "${project.name}.jar" as String
-    it.manifest {
+tasks.named('jar', Jar) {
+    archiveFileName = "${name}.jar" as String
+    manifest {
         attributes 'Main-Class': project.property('startMainClass')
     }
 }
 
-TaskProvider<CreateStartScripts> startScripts = tasks.register('createStartScripts', CreateStartScripts)
-startScripts.configure { CreateStartScripts t ->
-    t.outputDir = layout.buildDirectory.dir('generated-scripts').get().asFile
-    t.applicationName = 'grailsw'
-    t.mainClass = project.findProperty('startMainClass') as String
-    t.classpath = files(jarTask)
+tasks.register('createStartScripts', CreateStartScripts) {
+    outputDir = layout.buildDirectory.dir('generated-scripts').get().asFile
+    applicationName = 'grailsw'
+    mainClass = project.findProperty('startMainClass') as String
+    classpath = files(tasks.named('jar'))
 
     // See gradle tickets such as for lib https://github.com/gradle/gradle/issues/7033
     doLast {
-        t.unixScript.text = t.unixScript.text
+        unixScript.text = unixScript.text
                 .replace('$APP_HOME/lib/', '$APP_HOME/')
                 .replace('"${APP_HOME:-./}.."', '"${APP_HOME:-./}"')
 
-        t.windowsScript.text = t.windowsScript.text
+        windowsScript.text = windowsScript.text
                 .replace('%APP_HOME%\\lib\\', '%APP_HOME%\\')
                 .replace('"%APP_HOME%\\lib\\', '"%APP_HOME%\\')
                 .replace('%DIRNAME%..', '%DIRNAME%')
     }
 }
 
-project.extensions.getByType(DistributionContainer).configureEach {
-    it.contents {
-        from(jarTask) {
-            into ''
+extensions.getByType(DistributionContainer).configureEach {
+    contents {
+        from(tasks.named('jar')) {
+            into('')
         }
-
-        from(startScripts) {
-            into ''
-            fileMode = 0755
+        from('createStartScripts') {
+            into('')
+            filePermissions {
+                unix(0755)
+            }
         }
     }
 }
 
-tasks.named('assemble').configure {
-    it.dependsOn(startScripts)
+tasks.named('assemble') {
+    dependsOn('createStartScripts')
 }
-tasks.named('installDist').configure {
-    it.dependsOn startScripts
+tasks.named('installDist') {
+    dependsOn('createStartScripts')
 }
-tasks.named('distZip').configure {
-    dependsOn startScripts
+tasks.named('distZip') {
+    dependsOn('createStartScripts')
 }
-tasks.named('distTar').configure {
-    dependsOn startScripts
+tasks.named('distTar') {
+    dependsOn('createStartScripts')
 }

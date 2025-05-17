@@ -68,24 +68,24 @@ def isolatedTests = [
         '**/CommandObjectNoDataSpec.class'
 ]
 
-tasks.register('execIsolatedTests', Test).configure { Test it ->
-    it.configure(defaultTestConfig)
-    it.forkEvery = 1
-    it.includes.addAll(isolatedTests)
+tasks.register('execIsolatedTests', Test) {
+    configure(defaultTestConfig)
+    forkEvery = 1
+    includes.addAll(isolatedTests)
 }
 
-tasks.register('createCombinedReport', TestReport).configure { TestReport rTask ->
-    rTask.group = 'verification'
-    rTask.destinationDirectory = layout.buildDirectory.dir('reports/allTests')
-    rTask.testResults.from(
+tasks.register('createCombinedReport', TestReport) {
+    group = 'verification'
+    destinationDirectory = layout.buildDirectory.dir('reports/allTests')
+    testResults.from(
             tasks.named('execIsolatedTests', Test).map({ it.binaryResultsDirectory }),
             tasks.named('test', Test).map({ it.binaryResultsDirectory })
     )
 }
 
-tasks.named('test', Test).configure { Test it ->
-    it.configure(defaultTestConfig)
-    it.excludes.addAll(isolatedTests)
+tasks.named('test', Test) {
+    configure(defaultTestConfig)
+    excludes.addAll(isolatedTests)
 }
 
 tasks.withType(Groovydoc).configureEach {

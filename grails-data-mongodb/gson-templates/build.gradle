@@ -54,17 +54,17 @@ sourceSets {
     }
 }
 
-tasks.register('compileViews', JavaExec).configure {JavaExec it ->
-    it.inputs.dir(templateSourceDir)
-    it.outputs.dir(compilationOutputDir)
-    it.mainClass = 'grails.plugin.json.view.JsonViewCompiler'
-    it.classpath = configurations.compileClasspath
-    it.args(templateSourceDir.asFile, compilationOutputDir.get().asFile, '17', ' ', ' ', 'none', 'UTF-8')
+tasks.register('compileViews', JavaExec) {
+    inputs.dir(templateSourceDir)
+    outputs.dir(compilationOutputDir)
+    mainClass = 'grails.plugin.json.view.JsonViewCompiler'
+    classpath = configurations.compileClasspath
+    args(templateSourceDir.asFile, compilationOutputDir.get().asFile, '17', ' ', ' ', 'none', 'UTF-8')
 }
 
 // This is needed to trigger compilation of the views
-tasks.named('classes').configure {
-    it.dependsOn 'compileViews'
+tasks.named('classes') {
+    dependsOn('compileViews')
 }
 
 apply {

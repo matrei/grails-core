@@ -55,51 +55,52 @@ dependencies {
 
     constraints {
         for (def entry : gradleBomDependencies.entrySet()) {
-            api entry.value
+            add('api', entry.value)
         }
         for (def entry : bomDependencies.entrySet()) {
-            api entry.value
+            add('api', entry.value)
         }
 
         for (Project subproject : rootProject.subprojects) {
             if (subproject.path == project.path || subproject.name in testProjects || subproject.name in docProjects || subproject.name in cliProjects) {
                 continue // ignore self & test projects
             }
-
-            api project(":${subproject.path}")
+            add('api', project(":$subproject.path"))
         }
 
         // since we're duplicating the bom instead of inheriting we have to add the grails-gradle projects
         // TODO: It should be possible to pull these build names using includedBuild, but I haven't found a way to do so
-        api "org.apache.grails:grails-gradle-plugins:${projectVersion}"
-        api "org.apache.grails.gradle:grails-gradle-model:${projectVersion}"
-        api "org.apache.grails:grails-docs-core:${projectVersion}"
+        add('api', "org.apache.grails:grails-gradle-plugins:$projectVersion")
+        add('api', "org.apache.grails.gradle:grails-gradle-model:$projectVersion")
+        add('api', "org.apache.grails:grails-docs-core:$projectVersion")
     }
 }
 
-configurations.register('bomDependencies').configure {
-    it.canBeResolved = true
-    it.transitive = true
-    it.extendsFrom(configurations.named('api').get())
+configurations.register('bomDependencies') {
+    canBeResolved = true
+    transitive = true
+    extendsFrom(configurations.named('api').get())
 }
 
-tasks.register('extractConstraints', ExtractDependenciesTask).configure { ExtractDependenciesTask it ->
-    it.configuration = configurations.named('bomDependencies')
-    it.configurationName = 'bomDependencies'
-    it.destination = project.layout.buildDirectory.file('grails-bom-constraints.adoc')
-    it.platformDefinitions = combinedPlatforms
-    it.definitions = combinedDependencies
-    it.versions = combinedVersions
-
-    it.dependsOn(project.tasks.named('generateMetadataFileForMavenPublication'), project.tasks.named('generatePomFileForMavenPublication'))
+tasks.register('extractConstraints', ExtractDependenciesTask) {
+    configuration = configurations.named('bomDependencies')
+    configurationName = 'bomDependencies'
+    destination = layout.buildDirectory.file('grails-bom-constraints.adoc')
+    platformDefinitions = combinedPlatforms
+    definitions = combinedDependencies
+    versions = combinedVersions
+    dependsOn(
+            tasks.named('generateMetadataFileForMavenPublication'),
+            tasks.named('generatePomFileForMavenPublication')
+    )
 }
 
-tasks.register('validateNoSnapshotDependencies').configure { Task it ->
-    it.doLast {
-        configurations.each { config ->
-            config.allDependencies.each { dep ->
-                if (dep.version && dep.version.contains('-SNAPSHOT')) {
-                    throw new GradleException("Releases cannot have a snapshot dependency: ${dep.group}:${dep.name} (${dep.version})")
+tasks.register('validateNoSnapshotDependencies') {
+    doLast {
+        configurations.each {
+            it.allDependencies.each {
+                if (it.version && it.version.contains('-SNAPSHOT')) {
+                    throw new GradleException("Releases cannot have a snapshot dependency: $it.group:$it.name ($it.version)")
                 }
             }
         }
@@ -107,10 +108,10 @@ tasks.register('validateNoSnapshotDependencies').configure { Task it ->
 }
 
 if (ext.isReleaseBuild && ext.isPublishedExternal) {
-    tasks.named('generateMetadataFileForMavenPublication').configure {
+    tasks.named('generateMetadataFileForMavenPublication') {
         dependsOn(tasks.named('validateNoSnapshotDependencies'))
     }
-    tasks.named('generatePomFileForMavenPublication').configure {
+    tasks.named('generatePomFileForMavenPublication') {
         dependsOn(tasks.named('validateNoSnapshotDependencies'))
     }
 }

@@ -56,8 +56,8 @@ configurations.configureEach {
 
 // work around for parallel builds due to https://github.com/bertramdev/asset-pipeline/issues/177
 if ('assetCompile' in tasks.names) {
-    tasks.named('assetCompile').configure { Task task ->
-        task.outputs.dir rootProject.layout.buildDirectory.dir('asset-serialize')
+    tasks.named('assetCompile') {
+        outputs.dir(rootProject.layout.buildDirectory.dir('asset-serialize'))
     }
 }
 
@@ -65,9 +65,9 @@ List<String> debugArguments = [
         '-Xmx2g', '-Xdebug', '-Xnoagent', '-Djava.compiler=NONE',
         '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005'
 ]
-tasks.withType(Test).configureEach { Test task ->
-    boolean isHibernate5 = !project.name.startsWith('grails-test-examples-hibernate5')
-    boolean isMongo = !project.name.startsWith('grails-test-examples-mongodb')
+tasks.withType(Test).configureEach {
+    boolean isHibernate5 = !name.startsWith('grails-test-examples-hibernate5')
+    boolean isMongo = !name.startsWith('grails-test-examples-mongodb')
 
     onlyIf {
         if (project.hasProperty('skipFunctionalTests')) {
@@ -98,12 +98,13 @@ tasks.withType(Test).configureEach { Test task ->
     }
 
     if (isMongo && project.hasProperty('serializeMongoTests')) {
-        // if the developer decides to run a local mongo instance, the tests must be serialized instead of launching containers as needed
-        task.outputs.dir rootProject.layout.buildDirectory.dir('mongo-test-serialize')
+        // if the developer decides to run a local mongo instance,
+        // the tests must be serialized instead of launching containers as needed
+        outputs.dir rootProject.layout.buildDirectory.dir('mongo-test-serialize')
     }
 
-    task.useJUnitPlatform()
-    task.testLogging {
+    useJUnitPlatform()
+    testLogging {
         events('passed', 'skipped', 'failed', 'standardOut', 'standardError')
         showExceptions = true
         exceptionFormat = 'full'
@@ -111,18 +112,18 @@ tasks.withType(Test).configureEach { Test task ->
         showStackTraces = true
     }
     if (findProperty('testForked')) {
-        task.maxParallelForks = configuredTestParallel
-        task.forkEvery = (findProperty('testForkEvery') ?: 0)
+        maxParallelForks = configuredTestParallel
+        forkEvery = (findProperty('testForkEvery') ?: 0) as long
     }
     if (findProperty('testJvmArgs')) {
-        task.jvmArgs = property('testJvmArgs') as List<String>
+        jvmArgs = property('testJvmArgs') as List<String>
     }
     if (System.getProperty('debug.tests')) {
-        task.jvmArgs += debugArguments
+        jvmArgs += debugArguments
     }
 }
 
-tasks.named('groovydoc').configure {
+tasks.named('groovydoc') {
     // We don't need to generate docs for test projects
     enabled = false
 }

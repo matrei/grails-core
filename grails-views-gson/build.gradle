@@ -55,11 +55,11 @@ dependencies {
 
 def testArtifacts = ['*.gson', 'circular/**']
 
-tasks.named('jar', Jar).configure {
-    it.exclude testArtifacts
+tasks.named('jar', Jar) {
+    exclude(testArtifacts)
 }
-tasks.named('sourcesJar', Jar).configure {
-    it.exclude testArtifacts
+tasks.named('sourcesJar', Jar) {
+    exclude(testArtifacts)
 }
 
 apply {

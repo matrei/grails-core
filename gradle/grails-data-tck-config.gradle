@@ -28,36 +28,32 @@ configurations {
 }
 
 dependencies {
-    tck project(':grails-datamapping-tck')
-    testImplementation project(':grails-datamapping-tck')
+    add('tck', project(':grails-datamapping-tck'))
+    add('testImplementation', project(':grails-datamapping-tck'))
 }
 
 // TODO: gradle will happily put the jar file on the classpath, but junit won't find the tests.
 //  Dynamic test discovery also won't find them so extract the class files to force junit to work.
-TaskProvider<Sync> extractTck = tasks.register('extractTckJar', Sync)
-extractTck.configure { Sync it ->
-    it.inputs.files(configurations.tck)
-    it.outputs.upToDateWhen { false }
-    it.finalizedBy(tasks.named('test', Test))
-
-    it.from { zipTree(configurations.tck.singleFile) }
-    it.into(layout.buildDirectory.dir('extracted-tck-classes'))
+tasks.register('extractTckJar', Sync) {
+    inputs.files(configurations.tck)
+    outputs.upToDateWhen { false }
+    finalizedBy(tasks.named('test'))
+    from { zipTree(configurations.tck.singleFile) }
+    into(layout.buildDirectory.dir('extracted-tck-classes'))
 }
 
 // There is a known issue with IntelliJ that can cause it's inspection process to lock up.
 // this is a work around to help prevent the scenario that causes the lock up.
-def cleanupTask = tasks.register('cleanupTckClasses')
-cleanupTask.configure { Task it ->
-    Provider<Directory> extractDir = layout.buildDirectory.dir('extracted-tck-classes')
-    it.doLast {
-        extractDir.get().asFile.deleteDir()
+tasks.register('cleanupTckClasses') {
+    outputs.upToDateWhen { false }
+    doLast {
+        layout.buildDirectory.dir('extracted-tck-classes').get().asFile.deleteDir()
     }
-    it.outputs.upToDateWhen { false }
 }
 
-tasks.withType(Test).configureEach { Test it ->
-    it.dependsOn(extractTck)
-    it.onlyIf {
+tasks.withType(Test).configureEach {
+    dependsOn('extractTckJar')
+    onlyIf {
         if (project.hasProperty('onlyFunctionalTests')) {
             return false
         }
@@ -89,6 +85,6 @@ tasks.withType(Test).configureEach { Test it ->
         true
     }
 
-    it.testClassesDirs = objects.fileCollection().from(extractTck, testClassesDirs)
-    it.finalizedBy(cleanupTask)
+    testClassesDirs = objects.fileCollection().from('extractTckJar', testClassesDirs)
+    finalizedBy('cleanupTask')
 }

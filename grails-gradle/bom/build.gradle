@@ -42,7 +42,7 @@ dependencies {
     }
 
     // Because gradle uses groovy 3, we must use groovy 3 compatible versions for the grails-gradle-bom
-    api platform("org.codehaus.groovy:groovy-bom:${GroovySystem.version}")
+    api platform("org.codehaus.groovy:groovy-bom:$GroovySystem.version")
     api platform(gradleBomPlatformDependencies['gradle-spock-bom'])
 
     constraints {
@@ -55,17 +55,17 @@ dependencies {
                 continue // ignore self
             }
 
-            api project(":${subproject.path}")
+            api project(":$subproject.path")
         }
     }
 }
 
-tasks.register('validateNoSnapshotDependencies').configure {
+tasks.register('validateNoSnapshotDependencies') {
     doLast {
-        configurations.each { config ->
-            config.allDependencies.each { dep ->
-                if (dep.version && dep.version.contains('-SNAPSHOT')) {
-                    throw new GradleException("Releases cannot have a snapshot dependency: ${dep.group}:${dep.name} (${dep.version})")
+        configurations.each {
+            it.allDependencies.each {
+                if (it.version && it.version.contains('-SNAPSHOT')) {
+                    throw new GradleException("Releases cannot have a snapshot dependency: $it.group:$it.name ($it.version)")
                 }
             }
         }
@@ -73,18 +73,21 @@ tasks.register('validateNoSnapshotDependencies').configure {
 }
 
 if (ext.isReleaseBuild && ext.isPublishedExternal) {
-    tasks.named('generateMetadataFileForMavenPublication').configure {
+    tasks.named('generateMetadataFileForMavenPublication') {
         dependsOn(tasks.named('validateNoSnapshotDependencies'))
     }
-    tasks.named('generatePomFileForMavenPublication').configure {
+    tasks.named('generatePomFileForMavenPublication') {
         dependsOn(tasks.named('validateNoSnapshotDependencies'))
     }
 }
 
 Closure determinePropertyName = { String groupId, String artifactId, String version, boolean isBom ->
-    Map<String, String> toSearch = isBom ? gradleBomPlatformDependencies : gradleBomDependencies
 
-    Map.Entry<String, String> found = toSearch.entrySet().find { "$groupId:$artifactId:$version" as String == it.value as String }
+    Map<String, String> toSearch = isBom ? gradleBomPlatformDependencies : gradleBomDependencies
+    Map.Entry<String, String> found = toSearch.entrySet().find {
+        "$groupId:$artifactId:$version" as String == it.value as String
+    }
+
     if (!found) {
         return null
     }
@@ -92,7 +95,7 @@ Closure determinePropertyName = { String groupId, String artifactId, String vers
     Map<String, String> versions = gradleBomDependencyVersions
     String possibleKey = found.key.toString()
     while (possibleKey != null) {
-        String propertyName = "${possibleKey}.version" as String
+        String propertyName = "${possibleKey}.version"
         if (versions.containsKey(propertyName)) {
             return propertyName
         }
@@ -160,7 +163,7 @@ publishing {
                                 pomProperties.put(propertyName, inlineVersion)
                             }
                         } else if (!inlineVersion) {
-                            throw new GradleException('Dependency $groupId:$artifactId does not have a version.')
+                            throw new GradleException("Dependency $groupId:$artifactId does not have a version.")
                         }
                     }
 

@@ -35,7 +35,7 @@ group = 'org.apache.grails'
 dependencies {
     implementation platform(project(':grails-bom'))
     implementation project(':grails-shell-cli')
-    implementation "org.springframework.boot:spring-boot-cli"
+    //implementation "org.springframework.boot:spring-boot-cli"
     implementation "org.apache.groovy:groovy"
     implementation "org.apache.groovy:groovy-ant"
     implementation "org.apache.groovy:groovy-templates"
@@ -48,13 +48,13 @@ apply {
     from rootProject.layout.projectDirectory.file('gradle/publish-config.gradle')
 }
 
-tasks.named('jar', Jar).configure { Jar it ->
-    it.from {
+tasks.named('jar', Jar) {
+    from {
         (configurations.runtimeClasspath).collect {
             it.isDirectory() ? it : zipTree(it)
         }
     }
-    it.manifest {
-        attributes 'Main-Class': 'grails.init.RunCommand'
+    manifest {
+        attributes('Main-Class': 'grails.init.RunCommand')
     }
 }

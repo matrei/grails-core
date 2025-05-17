@@ -23,7 +23,7 @@ ext {
     includeInApiDocs = true
 }
 
-tasks.named('groovydoc', Groovydoc).configure {
+tasks.named('groovydoc', Groovydoc) {
     // TODO: Fix this for testFixtures
     classpath = configurations.documentation
     groovyClasspath = configurations.documentation

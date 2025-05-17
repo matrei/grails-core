@@ -26,22 +26,18 @@ plugins {
 version = projectVersion
 group = 'org.apache.grails'
 
-def asciidoctorAttributes = [
-        icons               : 'font',
-        version             : project.version,
-        imagesdir           : 'images',
-]
-
-tasks.named('asciidoctor', AsciidoctorTask) { AsciidoctorTask it ->
-    inputs.dir project.layout.projectDirectory.dir('src/main/docs')
-    outputs.dir project.layout.buildDirectory.dir('docs')
-
-    it.jvm {
-        jvmArgs("--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED", "--add-opens", "java.base/java.io=ALL-UNNAMED")
+tasks.named('asciidoctor', AsciidoctorTask) {
+    inputs.dir(layout.projectDirectory.dir('src/main/docs'))
+    outputs.dir(layout.buildDirectory.dir('docs'))
+    sourceDir = layout.projectDirectory.dir('src/main/docs')
+    outputDir = layout.buildDirectory.dir('docs'))
+    attributes([
+            icons:     'font',
+            imagesdir: 'images',
+            version:   version,
+    ])
+    baseDirFollowsSourceFile()
+    jvm {
+        jvmArgs('--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED', '--add-opens', 'java.base/java.io=ALL-UNNAMED')
     }
-    it.baseDirFollowsSourceFile()
-    it.sourceDir project.layout.projectDirectory.dir('src/main/docs')
-    it.outputDir = project.layout.buildDirectory.dir('docs')
-    it.attributes asciidoctorAttributes
 }
-

@@ -17,23 +17,22 @@
  *  under the License.
  */
 
-tasks.register('installToHomeDist').configure { Task task ->
-    task.inputs.files(tasks.named('jar'))
-    task.inputs.files(tasks.named('sourcesJar'))
-    task.inputs.files(tasks.named('javadocJar'))
-    task.outputs.dir(distInstallDir)
-
+tasks.register('installToHomeDist') {
+    inputs.files(tasks.named('jar'))
+    inputs.files(tasks.named('sourcesJar'))
+    inputs.files(tasks.named('javadocJar'))
+    outputs.dir(distInstallDir)
     doLast {
         copy {
-            it.from layout.buildDirectory.dir('libs')
-            it.into distInstallDir
+            from layout.buildDirectory.dir('libs')
+            into distInstallDir
         }
     }
 }
 
 tasks.withType(PublishToMavenLocal).configureEach {
-    it.dependsOn('installToHomeDist')
-    it.doLast {
+    dependsOn(tasks.named('installToHomeDist'))
+    doLast {
         copy {
             from distInstallDir
             into homeDistDir

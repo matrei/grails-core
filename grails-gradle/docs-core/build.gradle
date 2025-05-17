@@ -71,18 +71,17 @@ sourceSets {
     }
 }
 
-tasks.register('docFilesJar', Jar).configure {Jar it ->
-    it.description = 'Package up files used for generating documentation.'
-    it.archiveVersion = null
-    it.archiveFileName = 'grails-doc-files.jar'
-    it.from 'src/main/template'
+tasks.register('docFilesJar', Jar) {
+    description = 'Package up files used for generating documentation.'
+    archiveVersion = null
+    archiveFileName = 'grails-doc-files.jar'
+    from 'src/main/template'
 }
 
-tasks.named('jar', Jar).configure { Jar it ->
-    it.from docFilesJar
+tasks.named('jar', Jar) {
+    from docFilesJar
+    dependsOn('docFilesJar')
 }
-
-jar.dependsOn docFilesJar
 
 apply {
     from rootProject.layout.projectDirectory.file('gradle/docs-config.gradle')
@@ -107,13 +106,10 @@ publishing {
     publications {
         maven(MavenPublication) {
             from components.java
-
             pom {
                 name = 'Grails Gradle Plugin'
                 description = 'A Gradle plugin for Grails which provides a bunch of useful plugins'
-
                 url = 'https://github.com/apache/grails-core'
-
                 licenses {
                     license {
                         name = 'The Apache Software License, Version 2.0'
@@ -121,13 +117,11 @@ publishing {
                         distribution = 'repo'
                     }
                 }
-
                 scm {
                     url = 'scm:git@github.com:apache/grails-core.git'
                     connection = 'scm:git@github.com:apache/grails-core.git'
                     developerConnection = 'scm:git@github.com:apache/grails-core.git'
                 }
-
                 developers {
                     developer {
                         id = 'graemerocher'
