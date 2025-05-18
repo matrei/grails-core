@@ -37,12 +37,12 @@ configurations.configureEach {
                 else if(possibleProject.name == 'grails-geb') {
                     def selector = it.variant(module(substitutedArtifact)) { VariantSelectionDetails details ->
                         details.capabilities { ModuleDependencyCapabilitiesHandler handler ->
-                            handler.requireCapability("${substitutedArtifact}-test-fixtures" as String)
+                            handler.requireCapability("$substitutedArtifact-test-fixtures" as String)
                         }
                     }
 
                     def replacement = it.variant(project(":$possibleProject.name")) { v ->
-                        v.capabilities { it.requireCapability("${substitutedArtifact}-test-fixtures") }
+                        v.capabilities { it.requireCapability("$substitutedArtifact-test-fixtures") }
                     }
                     substitute selector using replacement
                 }
@@ -66,41 +66,27 @@ List<String> debugArguments = [
         '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005'
 ]
 tasks.withType(Test).configureEach {
+
     boolean isHibernate5 = !name.startsWith('grails-test-examples-hibernate5')
     boolean isMongo = !name.startsWith('grails-test-examples-mongodb')
 
+    def criteriaToSkipTests = [
+            { project.hasProperty('skipFunctionalTests') },
+            { project.hasProperty('onlyHibernate5Tests') && isHibernate5 },
+            { project.hasProperty('onlyMongodbTests') && isMongo },
+            { project.hasProperty('onlyCoreTests') },
+            { project.hasProperty('skipTests') }
+
+    ] as List<Closure>
+
     onlyIf {
-        if (project.hasProperty('skipFunctionalTests')) {
-            return false
-        }
-
-        if (project.hasProperty('onlyHibernate5Tests')) {
-            if (isHibernate5) {
-                return false
-            }
-        }
-
-        if (project.hasProperty('onlyMongodbTests')) {
-            if (isMongo) {
-                return false
-            }
-        }
-
-        if (project.hasProperty('onlyCoreTests')) {
-            return false
-        }
-
-        if(project.hasProperty('skipTests')) {
-            return false
-        }
-
-        return true
+        !criteriaToSkipTests.any { it() }
     }
 
     if (isMongo && project.hasProperty('serializeMongoTests')) {
         // if the developer decides to run a local mongo instance,
         // the tests must be serialized instead of launching containers as needed
-        outputs.dir rootProject.layout.buildDirectory.dir('mongo-test-serialize')
+        outputs.dir(rootProject.layout.buildDirectory.dir('mongo-test-serialize'))
     }
 
     useJUnitPlatform()

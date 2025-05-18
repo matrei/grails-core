@@ -86,5 +86,5 @@ tasks.withType(Test).configureEach {
     }
 
     testClassesDirs = objects.fileCollection().from('extractTckJar', testClassesDirs)
-    finalizedBy('cleanupTask')
+    finalizedBy('cleanupTckClasses')
 }
