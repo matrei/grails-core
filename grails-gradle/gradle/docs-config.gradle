@@ -17,16 +17,33 @@
  *  under the License.
  */
 
-configurations.register('documentation')
+configurations.register('documentation') {
+    canBeConsumed = false
+    canBeResolved = true
+    attributes {
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+    }
+}
 dependencies {
     add('documentation', platform(project(':grails-gradle-bom')))
     add('documentation', 'org.fusesource.jansi:jansi')
     add('documentation', 'jline:jline')
     add('documentation', 'com.github.javaparser:javaparser-core')
-    add('documentation', 'org.codehaus.groovy:groovy')
-    add('documentation', 'org.codehaus.groovy:groovy-ant')
-    add('documentation', 'org.codehaus.groovy:groovy-docgenerator')
-    add('documentation', 'org.codehaus.groovy:groovy-templates')
+/*
+    Temporarily use 4.0.27-SNAPSHOT for documentation generation until 4.0.27 is released.
+    add('documentation', "org.apache.groovy:groovy:${bomDependencyVersions['groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-groovydoc:${bomDependencyVersions['groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-ant:${bomDependencyVersions['groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-docgenerator:${bomDependencyVersions['groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-templates:${bomDependencyVersions['groovy.version']}")
+*/
+    add('documentation', 'org.apache.groovy:groovy:4.0.27-SNAPSHOT')
+    add('documentation', 'org.apache.groovy:groovy-groovydoc:4.0.27-SNAPSHOT')
+    add('documentation', 'org.apache.groovy:groovy-ant:4.0.27-SNAPSHOT')
+    add('documentation', 'org.apache.groovy:groovy-docgenerator:4.0.27-SNAPSHOT')
+    add('documentation', 'org.apache.groovy:groovy-templates:4.0.27-SNAPSHOT')
 }
 
 ext {
@@ -44,15 +61,23 @@ tasks.named('groovydoc', Groovydoc) {
 }
 
 tasks.named('javadoc', Javadoc) {
-    (it.options as StandardJavadocDocletOptions).with {
-        encoding = 'UTF-8'
-        docEncoding = 'UTF-8'
-        charSet = 'UTF-8'
-        addStringOption('Xms64M')
-        addStringOption('Xmx512M')
-    }
+    enabled = false
 }
 
-tasks.named('build') {
-    finalizedBy('groovydoc')
+tasks.named('javadocJar', Jar) {
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+    dirMode = 0755 // To avoid platform specific defaults
+    fileMode = 0644 // to avoid platform specific defaults
+
+    dependsOn('groovydoc')
+
+    // Ensure the java source set is included in the groovydoc source set
+    SourceSetContainer sourceSets = extensions.getByType(SourceSetContainer)
+    def groovydocTask = tasks.named('groovydoc', Groovydoc).get()
+    groovydocTask.source(project.files(sourceSets.main.java.srcDirs))
+
+    ConfigurableFileCollection groovyDocFiles = files(groovydocTask.destinationDir)
+    from(groovyDocFiles)
+    inputs.files(groovyDocFiles)
 }

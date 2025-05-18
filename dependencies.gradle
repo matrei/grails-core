@@ -1,20 +1,18 @@
 /*
- *  Licensed to the Apache Software Foundation (ASF) under one
- *  or more contributor license agreements.  See the NOTICE file
- *  distributed with this work for additional information
- *  regarding copyright ownership.  The ASF licenses this file
- *  to you under the Apache License, Version 2.0 (the
- *  "License"); you may not use this file except in compliance
- *  with the License.  You may obtain a copy of the License at
+ *  Licensed to the Apache Software Foundation (ASF) under one or more
+ *  contributor license agreements.  See the NOTICE file distributed with
+ *  this work for additional information regarding copyright ownership.
+ *  The ASF licenses this file to You under the Apache License, Version 2.0
+ *  (the "License"); you may not use this file except in compliance with
+ *  the License.  You may obtain a copy of the License at
  *
- *    https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing,
- *  software distributed under the License is distributed on an
- *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- *  KIND, either express or implied.  See the License for the
- *  specific language governing permissions and limitations
- *  under the License.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 // see https://github.com/dependabot/dependabot-core/issues/1618
@@ -27,7 +25,7 @@ ext {
             'ant.version'                        : '1.10.15',
             'asciidoctor-gradle-jvm.version'     : '4.0.4',
             'asciidoctorj.version'               : '3.0.0',
-            'asset-pipeline-gradle.version'      : '5.0.8',
+            'asset-pipeline-gradle.version'      : '5.0.9',
             'byte-buddy.version'                 : '1.15.5',
             'commons-text.version'               : '1.12.0',
             'directory-watcher.version'          : '0.18.0',
@@ -46,6 +44,31 @@ ext {
             'gradle-nexus-publish-plugin.version': '2.0.0',
             'spring-boot.version'                : '3.5.0-RC1',
             'springloaded.version'               : '1.2.8.RELEASE',
+            // Because 3.5.0-RC1 contains 6.2.6 instead of 6.2.7, we need to override the various spring versions
+            // https://github.com/spring-projects/spring-framework/issues/34796 which prevents running apps via jar (nested jar failures)
+            'spring-websocket.version'           : '6.2.7',
+            'spring-webmvc.version'              : '6.2.7',
+            'spring-webflux.version'             : '6.2.7',
+            'spring-web.version'                 : '6.2.7',
+            'spring-tx.version'                  : '6.2.7',
+            'spring-test.version'                : '6.2.7',
+            'spring-r2dbc.version'               : '6.2.7',
+            'spring-oxm.version'                 : '6.2.7',
+            'spring-orm.version'                 : '6.2.7',
+            'spring-messaging.version'           : '6.2.7',
+            'spring-jms.version'                 : '6.2.7',
+            'spring-jdbc.version'                : '6.2.7',
+            'spring-jcl.version'                 : '6.2.7',
+            'spring-instrument.version'          : '6.2.7',
+            'spring-expression.version'          : '6.2.7',
+            'spring-core-test.version'           : '6.2.7',
+            'spring-core.version'                : '6.2.7',
+            'spring-context-support.version'     : '6.2.7',
+            'spring-context-indexer.version'     : '6.2.7',
+            'spring-context.version'             : '6.2.7',
+            'spring-beans.version'               : '6.2.7',
+            'spring-aspects.version'             : '6.2.7',
+            'spring-aop.version'                 : '6.2.7',
     ]
 
     // Note: the name of the dependency must be the prefix of the property name so properties in the pom are resolved correctly
@@ -76,6 +99,31 @@ ext {
             'spring-boot-cli'            : "org.springframework.boot:spring-boot-cli:${gradleBomDependencyVersions['spring-boot.version']}",
             'spring-boot-gradle'         : "org.springframework.boot:spring-boot-gradle-plugin:${gradleBomDependencyVersions['spring-boot.version']}",
             'springloaded'               : "org.springframework:springloaded:${gradleBomDependencyVersions['springloaded.version']}",
+            // Because 3.5.0-RC1 contains 6.2.6 instead of 6.2.7, we need to override the various spring versions
+            // https://github.com/spring-projects/spring-framework/issues/34796 which prevents running apps via jar (nested jar failures)
+            'spring-websocket'           : "org.springframework:spring-websocket:${gradleBomDependencyVersions['spring-websocket.version']}",
+            'spring-webmvc'              : "org.springframework:spring-webmvc:${gradleBomDependencyVersions['spring-webmvc.version']}",
+            'spring-webflux'             : "org.springframework:spring-webflux:${gradleBomDependencyVersions['spring-webflux.version']}",
+            'spring-web'                 : "org.springframework:spring-web:${gradleBomDependencyVersions['spring-web.version']}",
+            'spring-tx'                  : "org.springframework:spring-tx:${gradleBomDependencyVersions['spring-tx.version']}",
+            'spring-test'                : "org.springframework:spring-test:${gradleBomDependencyVersions['spring-test.version']}",
+            'spring-r2dbc'               : "org.springframework:spring-r2dbc:${gradleBomDependencyVersions['spring-r2dbc.version']}",
+            'spring-oxm'                 : "org.springframework:spring-oxm:${gradleBomDependencyVersions['spring-oxm.version']}",
+            'spring-orm'                 : "org.springframework:spring-orm:${gradleBomDependencyVersions['spring-orm.version']}",
+            'spring-messaging'           : "org.springframework:spring-messaging:${gradleBomDependencyVersions['spring-messaging.version']}",
+            'spring-jms'                 : "org.springframework:spring-jms:${gradleBomDependencyVersions['spring-jms.version']}",
+            'spring-jdbc'                : "org.springframework:spring-jdbc:${gradleBomDependencyVersions['spring-jdbc.version']}",
+            'spring-jcl'                 : "org.springframework:spring-jcl:${gradleBomDependencyVersions['spring-jcl.version']}",
+            'spring-instrument'          : "org.springframework:spring-instrument:${gradleBomDependencyVersions['spring-instrument.version']}",
+            'spring-expression'          : "org.springframework:spring-expression:${gradleBomDependencyVersions['spring-expression.version']}",
+            'spring-core-test'           : "org.springframework:spring-core-test:${gradleBomDependencyVersions['spring-core-test.version']}",
+            'spring-core'                : "org.springframework:spring-core:${gradleBomDependencyVersions['spring-core.version']}",
+            'spring-context-support'     : "org.springframework:spring-context-support:${gradleBomDependencyVersions['spring-context-support.version']}",
+            'spring-context-indexer'     : "org.springframework:spring-context-indexer:${gradleBomDependencyVersions['spring-context-indexer.version']}",
+            'spring-context'             : "org.springframework:spring-context:${gradleBomDependencyVersions['spring-context.version']}",
+            'spring-beans'               : "org.springframework:spring-beans:${gradleBomDependencyVersions['spring-beans.version']}",
+            'spring-aspects'             : "org.springframework:spring-aspects:${gradleBomDependencyVersions['spring-aspects.version']}",
+            'spring-aop'                 : "org.springframework:spring-aop:${gradleBomDependencyVersions['spring-aop.version']}",
     ]
 
     bomDependencyVersions = [
@@ -107,24 +155,24 @@ ext {
 
     // Note: the name of the dependency must be the prefix of the property name so properties in the pom are resolved correctly
     bomDependencies = [
-            'asset-pipeline-grails'          : "com.bertramlabs.plugins:asset-pipeline-grails:${bomDependencyVersions['asset-pipeline-grails.version']}",
-            'bootstrap'                      : "org.webjars.npm:bootstrap:${bomDependencyVersions['bootstrap.version']}",
-            'bootstrap-icons'                : "org.webjars.npm:bootstrap-icons:${bomDependencyVersions['bootstrap-icons.version']}",
-            'commons-codec'                  : "commons-codec:commons-codec:${bomDependencyVersions['commons-codec.version']}",
-            'geb-spock'                      : "org.gebish:geb-spock:${bomDependencyVersions['geb-spock.version']}",
-            'h2'                             : "com.h2database:h2:${bomDependencyVersions['h2.version']}",
-            'jquery'                         : "org.webjars.npm:jquery:${bomDependencyVersions['jquery.version']}",
-            'liquibase-hibernate5'           : "org.liquibase:liquibase:${bomDependencyVersions['liquibase-hibernate5.version']}",
-            'liquibase-hibernate5-cdi'       : "org.liquibase:liquibase-cdi:${bomDependencyVersions['liquibase-hibernate5.version']}",
-            'liquibase-hibernate5-core'      : "org.liquibase:liquibase-core:${bomDependencyVersions['liquibase-hibernate5.version']}",
-            'liquibase-hibernate5-ext'       : "org.liquibase.ext:liquibase5-hibernate:${bomDependencyVersions['liquibase-hibernate5.version']}",
-            'mongodb-bson'                   : "org.mongodb:bson:${bomDependencyVersions['mongodb.version']}",
-            'mongodb-driver-core'            : "org.mongodb:mongodb-driver-core:${bomDependencyVersions['mongodb.version']}",
-            'mongodb-driver-sync'            : "org.mongodb:mongodb-driver-sync:${bomDependencyVersions['mongodb.version']}",
-            'mongodb-record-codec'           : "org.mongodb:bson-record-codec:${bomDependencyVersions['mongodb.version']}",
-            'rxjava'                         : "io.reactivex:rxjava:${bomDependencyVersions['rxjava.version']}",
-            'rxjava2'                        : "io.reactivex.rxjava2:rxjava:${bomDependencyVersions['rxjava2.version']}",
-            'rxjava3'                        : "io.reactivex.rxjava3:rxjava:${bomDependencyVersions['rxjava3.version']}",
+            'asset-pipeline-grails'    : "com.bertramlabs.plugins:asset-pipeline-grails:${bomDependencyVersions['asset-pipeline-grails.version']}",
+            'bootstrap'                : "org.webjars.npm:bootstrap:${bomDependencyVersions['bootstrap.version']}",
+            'bootstrap-icons'          : "org.webjars.npm:bootstrap-icons:${bomDependencyVersions['bootstrap-icons.version']}",
+            'commons-codec'            : "commons-codec:commons-codec:${bomDependencyVersions['commons-codec.version']}",
+            'geb-spock'                : "org.gebish:geb-spock:${bomDependencyVersions['geb-spock.version']}",
+            'h2'                       : "com.h2database:h2:${bomDependencyVersions['h2.version']}",
+            'jquery'                   : "org.webjars.npm:jquery:${bomDependencyVersions['jquery.version']}",
+            'liquibase-hibernate5'     : "org.liquibase:liquibase:${bomDependencyVersions['liquibase-hibernate5.version']}",
+            'liquibase-hibernate5-cdi' : "org.liquibase:liquibase-cdi:${bomDependencyVersions['liquibase-hibernate5.version']}",
+            'liquibase-hibernate5-core': "org.liquibase:liquibase-core:${bomDependencyVersions['liquibase-hibernate5.version']}",
+            'liquibase-hibernate5-ext' : "org.liquibase.ext:liquibase5-hibernate:${bomDependencyVersions['liquibase-hibernate5.version']}",
+            'mongodb-bson'             : "org.mongodb:bson:${bomDependencyVersions['mongodb.version']}",
+            'mongodb-driver-core'      : "org.mongodb:mongodb-driver-core:${bomDependencyVersions['mongodb.version']}",
+            'mongodb-driver-sync'      : "org.mongodb:mongodb-driver-sync:${bomDependencyVersions['mongodb.version']}",
+            'mongodb-record-codec'     : "org.mongodb:bson-record-codec:${bomDependencyVersions['mongodb.version']}",
+            'rxjava'                   : "io.reactivex:rxjava:${bomDependencyVersions['rxjava.version']}",
+            'rxjava2'                  : "io.reactivex.rxjava2:rxjava:${bomDependencyVersions['rxjava2.version']}",
+            'rxjava3'                  : "io.reactivex.rxjava3:rxjava:${bomDependencyVersions['rxjava3.version']}",
     ]
 
     // Because pom exclusions aren't properly supported by gradle, we can't inherit the grails-gradle-bom

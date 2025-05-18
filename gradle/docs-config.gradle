@@ -28,7 +28,7 @@ tasks.named('groovydoc', Groovydoc) {
     classpath = configurations.documentation
     groovyClasspath = configurations.documentation
     access = GroovydocAccess.PROTECTED
-    includeAuthor = true
+    includeAuthor = false
     includeMainForScripts = false
     processScripts = false
     noTimestamp = true

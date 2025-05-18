@@ -184,8 +184,6 @@ Replace "9090" with your preferred port.
 
 === Note for Windows Users
 
-If you encounter an error related to the Java process or filename length, you can use the `--stacktrace` flag or add `grails { pathingJar = true }` to your "build.gradle" file.
-
 It may also be necessary to enclose the system properties in quotes on Windows:
 ----
 ./gradlew bootRun "-Dgrails.server.port=9090"

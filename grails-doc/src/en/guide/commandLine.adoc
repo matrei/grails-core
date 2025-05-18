@@ -234,10 +234,6 @@ dependencies {
     implementation 'org.grails:grails-core'
     // Add more dependencies as needed...
 }
-
-grails {
-    pathingJar = true
-}
 ----
 
 === Utilizing Gradle Build Tool

@@ -17,26 +17,8 @@
  *  under the License.
  */
 
-buildscript {
-    repositories {
-        maven { url = 'https://repo.grails.org/grails/core' }
-        maven { url = 'https://repository.apache.org/content/groups/snapshots' }
-    }
-    dependencies {
-        classpath platform("org.apache.grails:grails-gradle-bom:$projectVersion")
-        classpath "org.apache.grails:grails-gradle-plugins"
-        classpath "com.bertramlabs.plugins:asset-pipeline-gradle"
-    }
-}
-
 apply plugin: 'groovy'
 apply plugin: 'org.apache.grails.gradle.grails-web'
-
-repositories {
-    maven { url = 'https://repo.grails.org/grails/core' }
-    maven { url = 'https://repository.apache.org/content/groups/snapshots' }
-    mavenCentral()
-}
 
 version = '0.1'
 group = 'test.app'

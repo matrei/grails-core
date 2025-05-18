@@ -21,7 +21,11 @@ package org.grails.io.support
 
 import grails.util.BuildSettings
 import groovy.transform.CompileStatic
-import groovyjarjarasm.asm.*
+import groovyjarjarasm.asm.ClassReader
+import groovyjarjarasm.asm.ClassVisitor
+import groovyjarjarasm.asm.MethodVisitor
+import groovyjarjarasm.asm.Opcodes
+import groovyjarjarasm.asm.Type
 
 import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap

@@ -58,12 +58,13 @@ dependencies {
 }
 
 tasks.named('asciidoctor', AsciidoctorTask) {
-    inputs.dir(layout.projectDirectory.dir('src/docs'))
+    inputs.dir(layout.projectDirectory.dir('src/docs/asciidoc'))
     outputs.dir(layout.buildDirectory.dir('asciidoc/manual'))
     resources {
-        from("$projectDir/src/docs/asciidoc/images")
+        from(layout.projectDirectory.dir('src/docs/asciidoc/images'))
         into('./images')
     }
+
     attributes(
             'experimental': 'true',
             'compat-mode': 'true',

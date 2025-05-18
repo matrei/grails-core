@@ -17,12 +17,12 @@ skeleton:
     executable: ["**/gradlew*", "**/grailsw*"]
     binaryExtensions: ['png','gif','jpg','jpeg','ico','icns','pdf','zip','jar','class']
 repositories:
-    - "https://repo1.maven.org/maven2"
-    - "https://repo.grails.org/grails/core"
+    - "https://repository.apache.org/content/groups/public"
+    - "https://repo.grails.org/grails/restricted"
 build:
     repositories:
-        - "https://repo1.maven.org/maven2"
-        - "https://repo.grails.org/grails/core"
+        - "https://repository.apache.org/content/groups/public"
+        - "https://repo.grails.org/grails/restricted"
     plugins:
         - eclipse
         - idea

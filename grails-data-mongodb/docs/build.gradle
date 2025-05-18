@@ -75,7 +75,8 @@ dependencies {
 
 tasks.named('asciidoctor', AsciidoctorTask) {
     dependsOn('resolveMongodbVersion')
-    inputs.dir(layout.projectDirectory.dir('src/docs'))
+
+    inputs.dir(layout.projectDirectory.dir('src/docs/asciidoc'))
     outputs.dir(layout.buildDirectory.dir('asciidoc/manual'))
     sourceDir = layout.projectDirectory.dir('src/docs')
     outputDir = layout.buildDirectory.dir('docs')
@@ -88,11 +89,11 @@ tasks.named('asciidoctor', AsciidoctorTask) {
             'version'           : projectVersion,
             'pluginVersion'     : projectVersion,
             'mongoDriverVersion': resolveMongodbVersion.resolved,
-            'sourcedir'         : "$project.rootDir"
+            'sourcedir'         : rootDir.toString()
     ]
     baseDirFollowsSourceFile()
     jvm {
-        jvmArgs('--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED', '--add-opens', 'java.base/java.io=ALL-UNNAMED')
+        jvmArgs("--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED", "--add-opens", "java.base/java.io=ALL-UNNAMED")
     }
 }
 
@@ -100,7 +101,7 @@ tasks.withType(Groovydoc).configureEach {
     dependsOn(rootProject.subprojects
             .findAll { it.findProperty('gormApiDocs') }
             .collect { ":$it.name:groovydoc" })
-    docTitle = "GORM for MongoDB - $project.version"
+    docTitle = "GORM for MongoDB - $version"
 
     def sourceFiles = coreProjects.collect {
         layout.projectDirectory.files("$it/src/main/groovy")

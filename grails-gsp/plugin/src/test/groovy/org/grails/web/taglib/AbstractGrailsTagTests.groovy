@@ -84,7 +84,10 @@ import javax.xml.xpath.XPath
 import javax.xml.xpath.XPathConstants
 import javax.xml.xpath.XPathFactory
 
-import static org.junit.jupiter.api.Assertions.*
+import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertTrue
+import static org.junit.jupiter.api.Assertions.fail
 
 abstract class AbstractGrailsTagTests {
 
@@ -300,7 +303,7 @@ abstract class AbstractGrailsTagTests {
 
         def dependantPluginClasses = []
         dependantPluginClasses << gcl.loadClass('org.grails.plugins.CoreGrailsPlugin')
-        dependantPluginClasses << gcl.loadClass('org.grails.plugins.CodecsGrailsPlugin')
+        dependantPluginClasses << gcl.loadClass('org.grails.plugins.codecs.CodecsGrailsPlugin')
         dependantPluginClasses << gcl.loadClass('org.grails.plugins.domain.DomainClassGrailsPlugin')
         dependantPluginClasses << gcl.loadClass('org.grails.plugins.i18n.I18nGrailsPlugin')
         dependantPluginClasses << gcl.loadClass('org.grails.plugins.web.mapping.UrlMappingsGrailsPlugin')
