@@ -40,8 +40,8 @@ tasks.register('e2eTest', Test) {
         exceptionFormat = 'full'
         events('passed', 'skipped', 'failed', 'standardOut', 'standardError')
     }
-    beforeTest { descriptor ->
-        logger.quiet(' -- $descriptor')
+    beforeTest { Object descriptor ->
+        logger.quiet(' -- {}', descriptor)
     }
 
     dependsOn(
@@ -56,7 +56,8 @@ tasks.named('check') {
 }
 
 extensions.configure(GradlePluginDevelopmentExtension) {
-    it.testSourceSet(e2eTestSourceSet)
+    // Explicit `it` required here
+    it.testSourceSet(e2eTestSourceSet as SourceSet)
 }
 
 dependencies {
