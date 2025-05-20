@@ -17,8 +17,7 @@
  *  under the License.
  */
 
-SourceSet e2eTestSourceSet = sourceSets.create('e2eTest')
-
+def e2eTestSourceSet = sourceSets.create('e2eTest')
 tasks.register('e2eTest', Test) {
     onlyIf {
         ![
@@ -42,10 +41,12 @@ tasks.register('e2eTest', Test) {
         events('passed', 'skipped', 'failed', 'standardOut', 'standardError')
     }
     beforeTest { descriptor ->
-        logger.quiet ' -- $descriptor'
+        logger.quiet(' -- $descriptor')
     }
+
     dependsOn(
             'publishAllPublicationsToTestCaseMavenRepoRepository',
+            ':grails-gradle-tasks:publishAllPublicationsToTestCaseMavenRepoRepository',
             ':grails-gradle-bom:publishAllPublicationsToTestCaseMavenRepoRepository'
     )
 }
