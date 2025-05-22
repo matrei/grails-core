@@ -19,18 +19,13 @@
 
 apply plugin: 'groovy'
 
-configurations.register('documentation')
-
-dependencies {
-    documentation platform(project(':grails-bom'))
-    documentation 'org.apache.groovy:groovy-groovydoc'
-    documentation 'org.apache.groovy:groovy-ant'
-}
-
 // grails-data-mapping api
-tasks.register('aggregateDataMappingGroovydoc', Groovydoc) { Groovydoc task ->
-    group = 'documentation'
-    description = 'Copies Groovy API Documentation for all supporting projects'
+def combinedGroovydoc = tasks.register('aggregateDataMappingGroovydoc', Groovydoc)
+apply from: rootProject.layout.projectDirectory.file('gradle/docs-dependencies.gradle')
+combinedGroovydoc.configure { Groovydoc task ->
+    task.windowTitle = "Grails Data Mapping API - ${projectVersion}"
+    task.docTitle = "Grails Data Mapping API - ${projectVersion}"
+
     Set<Project> docProjects = rootProject.subprojects.findAll {
         it.name in [
                 'grails-datastore-async',
@@ -48,26 +43,35 @@ tasks.register('aggregateDataMappingGroovydoc', Groovydoc) { Groovydoc task ->
         ]
     }
 
-    for (Project docProject : docProjects) {
-        docProject.sourceSets.main.allSource.srcDirs.each { File srcDir -> if (srcDir.exists()) task.inputs.dir(srcDir) }
-    }
+    def sources = docProjects
+            .collectMany {Project it ->
+                List possibleSources = [it.sourceSets.main]
 
-    docTitle = "Grails Data Mapping API - $projectVersion"
-    source = docProjects.collect { it.sourceSets.main.allSource }.flatten()
-    classpath = files(configurations.documentation + docProjects.configurations.compileClasspath)
+                def testFixturesSource = it.sourceSets.findByName('testFixtures')
+                if(testFixturesSource) {
+                    possibleSources.add(testFixturesSource)
+                }
 
-    access = GroovydocAccess.PROTECTED
-    includeAuthor = true
-    includeMainForScripts = false
-    processScripts = false
-    destinationDir = layout.buildDirectory.dir('data-api/api').get().asFile
+                def astSource = it.sourceSets.findByName('ast')
+                if(astSource) {
+                    possibleSources.add(astSource)
+                }
+                possibleSources
+            }
+            .flatten()
 
-    dependsOn(docProjects.collect { ":$it.name:classes" })
+    task.source(sources.collect{ SourceSet it -> [it.allSource.srcDirs, it.allSource.srcDirs] }.flatten().findAll { File srcDir ->
+        if(!(srcDir.name in ['java', 'groovy'])) {
+            return false
+        }
 
-    outputs.dir(task.destinationDir)
-    doLast {
-        delete(layout.buildDirectory.dir('tmp'))
-    }
+        srcDir.exists()
+    }.unique())
+    task.classpath = files(sources.collect{ SourceSet it -> it.compileClasspath.filter(File.&isDirectory) }.flatten().unique())
+    task.destinationDir = project.layout.buildDirectory.dir('data-api/api').get().asFile
+
+    task.inputs.files(task.source)
+    task.outputs.dir(task.destinationDir)
 }
 
 tasks.register('copyMongodbDocs', Sync) {

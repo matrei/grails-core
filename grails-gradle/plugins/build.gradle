@@ -36,8 +36,8 @@ dependencies {
 
     implementation project(':grails-gradle-tasks')
 
+    // spock is leaking from the grails-gradle-bom through grails-gradle-model
     implementation project(':grails-gradle-model'), {
-        exclude group: 'org.apache.groovy'
         exclude group: 'org.spockframework'
     }
 
