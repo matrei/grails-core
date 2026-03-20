@@ -169,7 +169,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api'
     testImplementation 'org.springframework:spring-test'
     testImplementation 'org.spockframework:spock-core'
-    testImplementation 'org.apache.grails:grails-testing-support-datamapping'
+    testImplementation project(':grails-testing-support-datamapping')
     testImplementation project(':grails-testing-support-core')
     testImplementation project(':grails-testing-support-web')
 

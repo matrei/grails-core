@@ -18,6 +18,7 @@
  */
 package org.grails.plugins.web.mime
 
+import grails.plugins.Plugin
 import grails.util.GrailsUtil
 
 /**
@@ -27,9 +28,8 @@ import grails.util.GrailsUtil
  * @author Graeme Rocher
  * @since 1.0
  */
-class MimeTypesGrailsPlugin {
-    
+class MimeTypesGrailsPlugin extends Plugin {
+
+    def title = 'MimeTypes'
     def version = GrailsUtil.getGrailsVersion()
-    def dependsOn = [core: version, controllers: version]
-    def observe = ['controllers']
 }

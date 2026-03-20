@@ -18,56 +18,58 @@
  */
 package org.grails.web.taglib
 
-import org.junit.jupiter.api.Test
+import spock.lang.Specification
 
-import static org.junit.jupiter.api.Assertions.assertEquals
+import org.springframework.context.support.StaticMessageSource
 
-class MessageTagTests extends AbstractGrailsTagTests {
+import grails.testing.web.taglib.TagLibUnitTest
+import org.grails.plugins.web.taglib.ApplicationTagLib
 
-    @Test
-    void testMessageTagInTemplate() {
-        def template = '<g:message code="test.code" />'
-        messageSource.addMessage("test.code", new Locale("en"), "hello world!")
+class MessageTagTests extends Specification implements TagLibUnitTest<ApplicationTagLib> {
 
-        assertOutputEquals 'hello world!', template
+    void 'message tag renders message code in template'() {
+        given:
+        (messageSource as StaticMessageSource).with {
+            addMessage('test.code', new Locale('en'), 'hello world!')
+        }
+
+        and:
+        def output = applyTemplate('<g:message code="test.code" />')
+
+        expect:
+        output == 'hello world!'
     }
 
-    @Test
-    void testMessageTag() {
-        StringWriter sw = new StringWriter();
-
-        withTag("message", sw) { tag ->
-
-            // test when no message found it returns code
-            def attrs = [code:"test.code"]
-            def result=tag.call(attrs)
-            assertEquals "test.code", result
-
-            // now test that when there is a message it finds it
-            messageSource.addMessage("test.code", new Locale("en"), "hello world!")
-            result = tag.call(attrs)
-            assertEquals "hello world!", result
-
-            // now test with arguments
-            messageSource.addMessage("test.args", new Locale("en"), "hello {0}!")
-            attrs = [code:"test.args", args:["fred"]]
-
-            result = tag.call(attrs)
-
-            assertEquals "hello fred!", result
+    void 'message tag resolves codes and arguments'() {
+        given:
+        (messageSource as StaticMessageSource).with {
+            addMessage('test.code', new Locale('en'), 'hello world!')
+            addMessage('test.args', new Locale('en'), 'hello {0}!')
         }
+
+        when:
+        def output = applyTemplate('<g:message code="test.code" />')
+
+        then:
+        output == 'hello world!'
+
+        when:
+        output = applyTemplate('<g:message code="test.args" args="${["fred"]}" />')
+
+        then:
+        output == 'hello fred!'
     }
 
-    @Test
-    void testMessageTagWithCodec() {
-        StringWriter sw = new StringWriter();
-
-        withTag("message", sw) { tag ->
-
-            def attrs = [code:"test.code", encodeAs:'HTML']
-            messageSource.addMessage("test.code", new Locale("en"), ">>&&")
-            def result = tag.call(attrs)
-            assertEquals "&gt;&gt;&amp;&amp;", result
+    void 'message tag applies codec when encodeAs is specified'() {
+        given:
+        (messageSource as StaticMessageSource).with {
+            addMessage('test.code', new Locale('en'), '>>&&')
         }
+
+        when:
+        def output = applyTemplate('<g:message code="test.code" encodeAs="HTML" />')
+
+        then:
+        output == '&gt;&gt;&amp;&amp;'
     }
 }

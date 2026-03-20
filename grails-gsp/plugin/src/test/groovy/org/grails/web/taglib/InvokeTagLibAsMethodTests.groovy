@@ -18,30 +18,28 @@
  */
 package org.grails.web.taglib
 
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import spock.lang.Issue
+import spock.lang.Specification
 
-class InvokeTagLibAsMethodTests extends AbstractGrailsTagTests {
+import grails.artefact.TagLibrary
+import grails.gsp.TagLib
+import grails.testing.web.taglib.TagLibUnitTest
 
-    @BeforeEach
-    void onSetUp() {
-        
-        gcl.parseClass('''
-import grails.gsp.*
+class InvokeTagLibAsMethodTests extends Specification implements TagLibUnitTest<InvokeAsMethodTestTagLib> {
 
-@TagLib
-class TestTagLib {
-    Closure testTypeConversion = { attrs ->
-        out << "Number Is: ${attrs.int('number')}"
+    @Issue('GRAILS-5484')
+    void 'type converters apply when tag is invoked as a method'() {
+        given:
+        def output = applyTemplate('${g.testTypeConversion(number: "42")}')
+
+        expect:
+        output == 'Number Is: 42'
     }
 }
-''')
-    }
 
-    @Test
-    void testTypeConvertersWhenTagIsInvokedAsMethod() {
-        // test for GRAILS-5484
-        def template = '${g.testTypeConversion(number: "42")}'
-        assertOutputEquals 'Number Is: 42', template
+@TagLib
+class InvokeAsMethodTestTagLib implements TagLibrary {
+    def testTypeConversion = { attrs ->
+        out << "Number Is: ${attrs.int('number')}"
     }
 }

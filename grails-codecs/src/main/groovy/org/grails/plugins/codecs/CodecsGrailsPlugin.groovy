@@ -47,7 +47,7 @@ class CodecsGrailsPlugin extends Plugin {
 
     Closure doWithSpring() {
         { ->
-            codecLookup(DefaultCodecLookup)
+            codecLookup(DefaultCodecLookup, ref('grailsApplication'))
         }
     }
 }

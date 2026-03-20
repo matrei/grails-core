@@ -56,8 +56,6 @@ import org.grails.web.pages.GSPResponseWriter
 import org.grails.web.servlet.context.support.WebRuntimeSpringConfiguration
 import org.grails.web.servlet.mvc.GrailsWebRequest
 import org.grails.web.util.GrailsApplicationAttributes
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory
 import org.springframework.beans.factory.support.RootBeanDefinition
 import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext
@@ -90,8 +88,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assertions.fail
+import spock.lang.Specification
 
-abstract class AbstractGrailsTagTests {
+abstract class AbstractGrailsTagTests extends Specification {
 
     ServletContext servletContext
     GrailsWebRequest webRequest
@@ -240,8 +239,7 @@ abstract class AbstractGrailsTagTests {
     protected void onSetUp() {
     }
 
-    @BeforeEach
-    protected void setUp() throws Exception {
+    protected void setup() throws Exception {
         GroovySystem.metaClassRegistry.addMetaClassRegistryChangeEventListener(registryCleaner)
         GroovyPageMetaInfo.DEFAULT_PLUGIN_PATH = null
         domBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
@@ -365,8 +363,7 @@ abstract class AbstractGrailsTagTests {
         request.setAttribute(DispatcherServlet.THEME_RESOLVER_ATTRIBUTE, new SessionThemeResolver())
     }
 
-    @AfterEach
-    protected void tearDown() {
+    protected void cleanup() {
         // Clear the page cache in the template engine since it's
         // static and likely to cause tests to interfere with each other.
         appCtx.groovyPagesTemplateEngine.clearPageCache()

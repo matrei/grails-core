@@ -18,18 +18,12 @@
  */
 package org.grails.web.taglib
 
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-
-import static org.junit.jupiter.api.Assertions.assertEquals
-
 /**
  * @author Graeme Rocher
  * @since 1.0
  */
 class NamespacedTagAndActionConflictTests extends AbstractGrailsTagTests {
 
-    @BeforeEach
     protected void onSetUp() {
         
         gcl.parseClass '''
@@ -54,14 +48,13 @@ class TestController {
 '''
     }
 
-    @Test
-    void testTagLibNamespaceAndActionConflict() {
+    void 'taglib namespace does not shadow controller action with same name'() {
         def controllerClass = ga.getControllerClass("TestController").clazz
 
         def controller = controllerClass.newInstance()
 
         controller.test()
 
-        assertEquals "foo", response.contentAsString
+        assert "foo" == response.contentAsString
     }
 }

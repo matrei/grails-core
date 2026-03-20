@@ -18,8 +18,10 @@
  */
 package org.grails.plugins.codecs;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 
 import grails.core.GrailsApplication;

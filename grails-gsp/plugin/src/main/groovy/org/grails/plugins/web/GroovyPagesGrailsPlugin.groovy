@@ -195,7 +195,9 @@ class GroovyPagesGrailsPlugin extends Plugin {
             }
 
             grailsResourceLocator(CachingGroovyPageStaticResourceLocator) { bean ->
-                bean.parent = 'abstractGrailsResourceLocator'
+                if (BuildSettings.BASE_DIR != null) {
+                    searchLocations = [BuildSettings.BASE_DIR.absolutePath]
+                }
                 if (enableReload) {
                     cacheTimeout = gspCacheTimeout
                 }

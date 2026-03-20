@@ -18,57 +18,26 @@
  */
 package org.grails.web.taglib
 
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.condition.DisabledOnJre
-import org.junit.jupiter.api.condition.EnabledOnJre
-import org.junit.jupiter.api.condition.JRE
+import spock.lang.Specification
 
-import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertTrue
+import grails.testing.web.taglib.TagLibUnitTest
+import org.grails.plugins.web.taglib.FormTagLib
 
+class FormRenderingTagLibTests extends Specification implements TagLibUnitTest<FormTagLib> {
 
-class FormRenderingTagLibTests extends AbstractGrailsTagTests {
+    void 'renders time zone select'() {
+        given:
+        def output = applyTemplate('<g:timeZoneSelect name="foo" locale="en_US"/>')
 
-    // TODO: #14200 Java 21 has different date requirements and needs fixed
-    @Test
-    @EnabledOnJre(JRE.JAVA_17)
-    void testTimeZoneSelect() {
-        def template = '<g:timeZoneSelect name="foo" locale="en_US"/>'
+        and: 'JDK versions differ in timezone display name formatting (including nbsp variants), normalize before assertions'
+        def normalizedOutput = output.replace('\u202F', ' ').replaceAll(/\s+/, ' ')
 
-        def engine = appCtx.groovyPagesTemplateEngine
-
-        assert engine
-        def t = engine.createTemplate(template, "test_"+ System.currentTimeMillis())
-
-        def w = t.make()
-
-        def sw = new StringWriter()
-        def out = new PrintWriter(sw)
-        webRequest.out = out
-        w.writeTo(out)
-
-        def output = sw.toString()
-        println output
-
-        assertTrue output.startsWith('<select name="foo" id="foo" >')
-        assertTrue output.contains('<option value="Pacific/Galapagos" >GALT, Galapagos Time -6:0.0 [Pacific/Galapagos]</option>')
-        assertTrue (output.contains('<option value="US/Central" >CDT, Central Daylight Time -6:0.0 [US/Central]</option>') || output.contains('<option value="US/Central" >CST, Central Standard Time -6:0.0 [US/Central]</option>'))
-        assertTrue output.endsWith('</select>')
-    }
-
-     void assertOutputEquals(expected, template, params = [:]) {
-        def engine = appCtx.groovyPagesTemplateEngine
-
-        assert engine
-        def t = engine.createTemplate(template, "test_"+ System.currentTimeMillis())
-
-        def w = t.make(params)
-
-        def sw = new StringWriter()
-        def out = new PrintWriter(sw)
-        webRequest.out = out
-        w.writeTo(out)
-
-        assertEquals expected, sw.toString()
+        expect:
+        normalizedOutput.startsWith('<select name="foo" id="foo" >')
+        normalizedOutput.contains('value="Pacific/Galapagos"')
+        normalizedOutput.contains(' -6:0.0 [Pacific/Galapagos]</option>')
+        normalizedOutput.contains('value="US/Central"')
+        normalizedOutput.contains(' -6:0.0 [US/Central]</option>')
+        normalizedOutput.endsWith('</select>')
     }
 }
