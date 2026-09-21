@@ -57,6 +57,31 @@ class GrailsDataMongoTckManagerSpec extends Specification {
         manager.cleanupSpec()
     }
 
+    void 'cleanup drops collections that do not support deletes'() {
+        given:
+        def manager = new GrailsDataMongoTckManager()
+        manager.setupSpec()
+        manager.setup(DataServiceConnectionRoutingSpec)
+        def database = manager.mongoClient.getDatabase('test')
+        database.createView('bookView', 'book', [new Document('$match', new Document())])
+        new Book(title: 'The Stand', author: 'Stephen King').save(flush: true, failOnError: true)
+
+        when:
+        manager.cleanup()
+        manager.setup(DataServiceConnectionRoutingSpec)
+        database = manager.mongoClient.getDatabase('test')
+        def collectionNames = database.listCollectionNames().toList()
+
+        then:
+        !collectionNames.contains('bookView')
+        collectionNames.contains('book')
+        Book.count() == 0
+
+        cleanup:
+        manager.cleanup()
+        manager.cleanupSpec()
+    }
+
     void 'the mongod container can open more files than the Docker default allows'() {
         given:
         def manager = new GrailsDataMongoTckManager()
