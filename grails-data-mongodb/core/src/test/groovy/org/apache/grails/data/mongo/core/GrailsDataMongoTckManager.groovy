@@ -190,8 +190,9 @@ class GrailsDataMongoTckManager extends GrailsDataTckManager {
             try {
                 database.getCollection(collectionName).deleteMany(new Document())
             }
-            catch (ignored) {
+            catch (e) {
                 // e.g. views do not support deletes
+                log.warn("Could not clear ${collectionName}, dropping it instead: ${e.message}")
                 database.getCollection(collectionName).drop()
             }
         }
