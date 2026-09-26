@@ -42,7 +42,9 @@ class OpenApiUrlMappings {
     static Closure mappings = { }
 
     /**
-     * Read as the application's URL mappings are built, from its configuration.
+     * Read as the application's URL mappings are built, from the configuration of the application
+     * {@link Holders} finds. Where it finds none, as for URL mappings built by hand without one,
+     * nothing is excluded.
      */
     static ArrayList<String> getExcludes() {
         GrailsApplication application = Holders.findApplication()
