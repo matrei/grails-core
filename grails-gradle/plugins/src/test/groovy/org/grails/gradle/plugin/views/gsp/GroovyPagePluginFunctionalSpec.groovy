@@ -418,6 +418,19 @@ class GroovyPagePluginFunctionalSpec extends GradleSpecification {
         List<String> optional = recorded.optionalPages.tokenize(',')
         optional.size() == 2
         optional.every { String page -> page.startsWith('grails-scaffolded/com.widget.Widget/') }
+
+        when: 'the build adds the runtime-only plugin to the classpath the pages are compiled against'
+        new File(projectDir, 'build.gradle').append("""
+            tasks.named('compileGroovyPages') {
+                classpath = classpath + files('gadget-plugin.jar')
+            }
+        """)
+        def widened = executeTask('generateScaffoldedViews')
+
+        then: 'its pages are generated too, since the check reads the page compilation\'s own classpath'
+        assertTaskSuccess('generateScaffoldedViews', widened)
+        new File(scaffolded, 'com.gadget.Gadget').listFiles()*.listFiles().flatten()*.text.sort() ==
+                ['gadget show ${className}', 'widget show ${className}']
     }
 
     def "a project that scaffolds nothing generates nothing"() {

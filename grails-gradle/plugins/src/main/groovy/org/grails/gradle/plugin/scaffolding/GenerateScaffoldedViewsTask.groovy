@@ -386,6 +386,8 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
         List<Controller> controllers = []
         Map<String, Boolean> ancestors = [:]
         URL[] classpath = (classesDirs.files + runtimeClasspath.files).collect { it.toURI().toURL() } as URL[]
+        // The project's classes are added although the plugin's wiring already puts them on
+        // pageClasspath: a task registered by hand may not.
         URL[] pageTypes = (classesDirs.files + pageClasspath.files).collect { it.toURI().toURL() } as URL[]
         new URLClassLoader(classpath, (ClassLoader) null).withCloseable { URLClassLoader resources ->
             for (File dir : classesDirs.files) {
@@ -400,7 +402,9 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
                     }
                 }
             }
-            new URLClassLoader(pageTypes, (ClassLoader) null).withCloseable { URLClassLoader compilable ->
+            // with the platform's modules as the parent, as the page compiler has them, so a domain
+            // type from java.sql resolves as java.lang's do
+            new URLClassLoader(pageTypes, ClassLoader.platformClassLoader).withCloseable { URLClassLoader compilable ->
                 for (File entry : runtimeClasspath.files) {
                     if (entry.isFile()) {
                         openArchive(entry)?.withCloseable { JarFile jar ->
@@ -447,6 +451,10 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
      * pages - and expanding it would only add pages the compiler has to leave out, each with a
      * warning, in every project the plugin reaches. An application's own controllers need no such
      * check: they were compiled against their domain classes.</p>
+     *
+     * <p>The check is necessary, not sufficient. A page can still name another type the compiler
+     * cannot resolve, such as an association's, and that page is left out with a warning as
+     * before.</p>
      */
     private Controller readPluginController(byte[] bytes, String origin, ClassLoader resources, ClassLoader compilable,
                                             Map<String, Boolean> ancestors) {

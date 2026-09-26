@@ -597,10 +597,11 @@ class GenerateScaffoldedViewsTaskSpec extends Specification {
     }
 
     void 'a plugin controller scaffolding a type the platform provides is expanded without it on the page classpath'() {
-        given:
+        given: 'one type from java.base, and one from a platform module the bootstrap loader does not define'
             File plugin = new File(projectDir, 'plugin.jar')
             writeJar(plugin, [(PLUGIN_DESCRIPTOR): '<plugin/>'.bytes,
-                              'com/plugin/NumberController.class': scaffolded('com/plugin/NumberController', 'java/lang/Long')])
+                              'com/plugin/NumberController.class': scaffolded('com/plugin/NumberController', 'java/lang/Long'),
+                              'com/plugin/TimestampController.class': scaffolded('com/plugin/TimestampController', 'java/sql/Timestamp')])
             def task = task()
             task.runtimeClasspath.from(plugin)
 
@@ -609,6 +610,7 @@ class GenerateScaffoldedViewsTaskSpec extends Specification {
 
         then:
             handed(task)['java.lang.Long/show'] == ['show ${className}']
+            handed(task)['java.sql.Timestamp/show'] == ['show ${className}']
     }
 
     void "a plugin controller scaffolding a domain class of the project's own is expanded"() {
