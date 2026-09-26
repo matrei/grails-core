@@ -28,7 +28,6 @@ import java.time.OffsetTime
 import java.time.Period
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
 
 import jakarta.inject.Inject
 
@@ -73,8 +72,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<OffsetDateTime>() {
             @Override
             OffsetDateTime convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME) { DateTimeFormatter formatter ->
-                    OffsetDateTime.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    OffsetDateTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -120,8 +119,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<OffsetTime>() {
             @Override
             OffsetTime convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_OFFSET_TIME) { DateTimeFormatter formatter ->
-                    OffsetTime.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    OffsetTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -167,8 +166,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<LocalDateTime>() {
             @Override
             LocalDateTime convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME) { DateTimeFormatter formatter ->
-                    LocalDateTime.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    LocalDateTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -214,8 +213,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<LocalDate>() {
             @Override
             LocalDate convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_LOCAL_DATE) { DateTimeFormatter formatter ->
-                    LocalDate.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    LocalDate.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -261,8 +260,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<LocalTime>() {
             @Override
             LocalTime convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_LOCAL_TIME) { DateTimeFormatter formatter ->
-                    LocalTime.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    LocalTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -308,8 +307,8 @@ class Jsr310ConvertersConfiguration {
         new Jsr310DateValueConverter<ZonedDateTime>() {
             @Override
             ZonedDateTime convert(Object value) {
-                convert(value, DateTimeFormatter.ISO_ZONED_DATE_TIME) { DateTimeFormatter formatter ->
-                    ZonedDateTime.parse((CharSequence) value, formatter)
+                convert(value) { String format ->
+                    ZonedDateTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
                 }
             }
 
@@ -411,29 +410,17 @@ class Jsr310ConvertersConfiguration {
             value instanceof String
         }
 
-        /**
-         * Converts a value written as ISO 8601 writes the type, as Grails renders it in JSON, or
-         * else by the first of the configured date formats that reads all of it.
-         *
-         * @param iso the ISO 8601 form of the type
-         * @param callable parses the value with the formatter it is given
-         */
-        T convert(Object value, DateTimeFormatter iso, Closure callable) {
+        T convert(Object value, Closure callable) {
             T dateValue
             if (value instanceof String) {
                 if (!value) {
                     return null
                 }
-                try {
-                    return (T) callable.call(iso)
-                } catch (DateTimeParseException ignored) {
-                    // Not the ISO 8601 form, so one of the configured formats.
-                }
                 def firstException
                 formatStrings.each { String format ->
                     if (dateValue == null) {
                         try {
-                            dateValue = (T) callable.call(DateTimeFormatter.ofPattern(format))
+                            dateValue = (T) callable.call(format)
                         } catch (Exception e) {
                             firstException = firstException ?: e
                         }
