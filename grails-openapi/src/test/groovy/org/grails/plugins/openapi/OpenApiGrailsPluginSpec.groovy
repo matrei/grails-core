@@ -19,20 +19,33 @@
 package org.grails.plugins.openapi
 
 import io.swagger.v3.core.converter.ModelConverter
+import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
+import io.swagger.v3.oas.models.SpecVersion
+import io.swagger.v3.oas.models.media.ObjectSchema
+import io.swagger.v3.oas.models.media.StringSchema
+import org.springdoc.core.converters.ModelConverterRegistrar
 import org.springdoc.core.customizers.OpenApiBuilderCustomizer
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.models.GroupedOpenApi
+import org.springdoc.core.properties.SpringDocConfigProperties
+import org.springdoc.core.utils.SpringDocAnnotationsUtils
 import org.springframework.beans.factory.support.BeanRegistryAdapter
 import org.springframework.beans.factory.support.DefaultListableBeanFactory
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.core.env.MapPropertySource
 import org.springframework.core.env.StandardEnvironment
+import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 
 import grails.artefact.Artefact
 import grails.core.DefaultGrailsApplication
 import grails.core.GrailsApplication
 import grails.openapi.GrailsOpenApiGenerator
+import grails.openapi.Kettle
+import grails.openapi.KettleController
+import grails.openapi.OpenApiFixture
 import grails.plugins.DefaultGrailsPluginManager
 import grails.plugins.GrailsPluginManager
 import grails.util.Holders
@@ -95,6 +108,35 @@ class OpenApiGrailsPluginSpec extends Specification {
         then: 'springdoc registers the converters and the builder customizers the application declares'
         beanFactory.getBeansOfType(ModelConverter).size() == 1
         beanFactory.getBeansOfType(OpenApiBuilderCustomizer).size() == 1
+    }
+
+    void 'drops what springdoc resolved for a document whose build fails, as the request completes'() {
+        given: 'springdoc registering the converters the application declares, as it starts'
+        def beanFactory = register()
+        new ModelConverterRegistrar(beanFactory.getBeansOfType(ModelConverter).values().toList(), new SpringDocConfigProperties())
+        def attributes = new ServletRequestAttributes(new MockHttpServletRequest())
+        RequestContextHolder.requestAttributes = attributes
+        def generator = OpenApiFixture.generator(OpenApiFixture.holder { '/kettles'(resources: 'kettle') },
+                OpenApiFixture.application([KettleController]), OpenApiFixture.context([Kettle]))
+
+        when: 'a build for a request resolves a class for a Spring MVC endpoint, and fails before the Grails description'
+        beanFactory.getBean(OpenApiBuilderCustomizer).customise(null)
+        SpringDocAnnotationsUtils.extractSchema(new Components(), Kettle, null, null, SpecVersion.V31)
+        attributes.requestCompleted()
+        RequestContextHolder.resetRequestAttributes()
+
+        and: 'the thread later describes a document holding a schema of that name springdoc did not resolve then'
+        def openApi = new OpenAPI(SpecVersion.V31).components(new Components()
+                .addSchemas('Kettle', new ObjectSchema().addProperty('fromElsewhere', new StringSchema())))
+        generator.contribute(openApi, null)
+
+        then: 'the schema is not taken for the class the failed build resolved'
+        openApi.components.schemas['Kettle'].properties.keySet() == ['fromElsewhere'] as Set
+        openApi.components.schemas['grails.openapi.Kettle']
+
+        cleanup:
+        RequestContextHolder.resetRequestAttributes()
+        SpringDocAnnotationsUtils.clearCache(null)
     }
 
     void 'registers nothing when the document is disabled'() {

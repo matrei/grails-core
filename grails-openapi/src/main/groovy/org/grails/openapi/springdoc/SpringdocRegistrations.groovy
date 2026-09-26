@@ -20,10 +20,8 @@ package org.grails.openapi.springdoc
 
 import groovy.transform.CompileStatic
 
-import org.springdoc.core.customizers.OpenApiBuilderCustomizer
 import org.springdoc.core.customizers.SpringDocCustomizers
 import org.springdoc.core.models.GroupedOpenApi
-import org.springdoc.core.service.OpenAPIService
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.BeanRegistry
 import org.springframework.core.Ordered
@@ -54,9 +52,7 @@ class SpringdocRegistrations {
         // springdoc describes its own endpoints as Jackson renders them. The classes it resolves
         // for them while it builds a document are recorded, so a Grails endpoint using one of them
         // is described by that schema, as Grails renders it, rather than by a second one.
-        registry.registerBean('grailsResolvedNamesRecorder', OpenApiBuilderCustomizer) {
-            it.supplier { { OpenAPIService service -> GrailsModelConverter.recordResolvedNames() } as OpenApiBuilderCustomizer }
-        }
+        registry.registerBean('grailsResolvedNamesRecorder', ResolvedNamesRecorder)
         // A plain customizer is applied to springdoc's default document only; each group is given
         // its own by the contributor.
         registry.registerBean('grailsOpenApiCustomizer', GrailsOpenApiCustomizer) {
