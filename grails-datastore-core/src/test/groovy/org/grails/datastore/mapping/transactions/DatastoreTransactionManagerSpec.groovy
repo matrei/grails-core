@@ -200,7 +200,26 @@ class DatastoreTransactionManagerSpec extends Specification {
         1 * transaction.commit()
     }
 
-    void "a read-write transaction cannot join a read-only one, whose commit would discard its writes"() {
+    void "a read-write transaction inside a read-only one joins it, as on Hibernate, and the commit warns about what it did not flush"() {
+        given:
+        session.hasPendingOperations() >> true
+
+        when:
+        readOnlyTemplate.execute {
+            new TransactionTemplate(transactionManager).execute {}
+        }
+
+        then:
+        1 * session.beginTransaction(_ as TransactionDefinition) >> transaction
+        0 * session.flush()
+        1 * transaction.commit()
+        readOnlyWarnings.size() == 1
+    }
+
+    void "with validateExistingTransaction set, a read-write transaction inside a read-only one is refused"() {
+        given:
+        transactionManager.validateExistingTransaction = true
+
         when:
         readOnlyTemplate.execute {
             new TransactionTemplate(transactionManager).execute {}

@@ -244,17 +244,17 @@ class MongoTransactionSpec extends EmbeddedReplicaSetSpec {
         names() == ["A", "C"]
     }
 
-    void "a read-write transaction inside a read-only one is refused rather than having its writes discarded"() {
+    void "a read-write transaction inside a read-only one joins it and is read-only, as on Hibernate"() {
         when:
         TxPerson.withTransaction([readOnly: true]) {
             TxPerson.withTransaction {
-                new TxPerson(name: "X").save()
+                new TxPerson(name: "flushed").save(flush: true)
+                new TxPerson(name: "queued").save()
             }
         }
 
-        then:
-        thrown(IllegalTransactionStateException)
-        names().empty
+        then: "the read-only commit does not flush, so only the write flushed explicitly was saved"
+        names() == ["flushed"]
     }
 
     void "a synchronization registered in a joined transaction runs once, after the outer commit"() {

@@ -81,7 +81,7 @@ The new session starts empty. An entity loaded in the surrounding transaction be
 
 TIP: With multi-document transactions enabled, a `REQUIRES_NEW` transaction is open beside its suspended caller, and MongoDB refuses a write that conflicts with another open transaction (`WriteConflict`): a document the caller has already written in its transaction, or a collection both create by writing to it. Create such collections up front, and keep the two transactions to different documents.
 
-A read-write transaction cannot join a read-only one: the read-only commit would discard its writes, so starting it throws `IllegalTransactionStateException`. Call it from read-write code, or give it `PROPAGATION_REQUIRES_NEW`. `PROPAGATION_NESTED` is not supported.
+A read-write transaction started inside a read-only one joins it and is read-only, as it is on Hibernate: the read-only commit does not flush, so a write it left queued is not saved, and the commit logs the warning described under <<readOnlyTransactions,Read-Only Transactions>>. Flush such a write with `save(flush: true)`, call the method from read-write code, or give it `PROPAGATION_REQUIRES_NEW`. To have the join fail instead, set `validateExistingTransaction` on the transaction manager. `PROPAGATION_NESTED` is not supported.
 
 In earlier versions a transaction started inside another began a second transaction on the same session instead of joining the first. It committed on its own when it returned, and the surrounding transaction's commit then did nothing, so writes the surrounding transaction made after the call were never saved; with multi-document transactions enabled, beginning the second transaction also discarded the writes made before the call.
 

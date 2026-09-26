@@ -48,10 +48,12 @@ import org.grails.datastore.mapping.core.Session;
  * or rolls back everything once, and a joined transaction that fails marks the whole one
  * rollback-only. A session bound on top of it ({@code withNewSession}) runs transactions of its
  * own. {@code PROPAGATION_REQUIRES_NEW} suspends the outer transaction and runs in a session of its
- * own; {@code PROPAGATION_NESTED} is not supported. A read-write transaction cannot join a read-only
- * one, whose commit would discard its writes, so that fails at the join. Once a transaction has
- * committed or rolled back it cannot be joined: transactional code run from its {@code afterCommit}
- * or {@code afterCompletion} callbacks begins a transaction of its own.</p>
+ * own; {@code PROPAGATION_NESTED} is not supported. A read-write transaction started inside a read-only
+ * one joins it and is read-only, as on Hibernate: the read-only commit does not flush, and warns when
+ * that leaves writes unpersisted. Set {@code validateExistingTransaction} to refuse such a join
+ * instead. Once a transaction has committed or rolled back it cannot be joined: transactional code
+ * run from its {@code afterCommit} or {@code afterCompletion} callbacks begins a transaction of its
+ * own.</p>
  *
  * @author Graeme Rocher
  * @since 1.0
@@ -61,12 +63,6 @@ public class DatastoreTransactionManager extends AbstractPlatformTransactionMana
 
     private Datastore datastore;
     private boolean datastoreManagedSession;
-
-    public DatastoreTransactionManager() {
-        // A read-only commit does not flush, so a read-write transaction joining a read-only one would
-        // have its writes discarded without a word. Refuse the join instead.
-        setValidateExistingTransaction(true);
-    }
 
     public void setDatastore(Datastore datastore) {
         this.datastore = datastore;
