@@ -44,7 +44,7 @@ Grails 8 requires a minimum of Java 21 to both build and run Grails applications
 This is an increase from Grails 7, which required Java 17.
 Update your project's toolchain, CI pipelines, and deployment environments to use JDK 21 or later.
 
-==== 1.1 Gradle 9.7 Minimum Requirement
+===== 1.1 Gradle 9.7 Minimum Requirement
 
 The Grails 8 Gradle plugins require Gradle 9.7 or later.
 Grails 7 applications were generated with a Gradle 8.14.x wrapper, and a wrapper carried over from Grails 7 does not work with Grails 8.
@@ -685,7 +685,7 @@ If your test infrastructure registers it explicitly, remove the registration; Sp
 Update the import.
 A new `RestTestClient` and corresponding `@AutoConfigureRestTestClient` annotation are also available as a fluent alternative.
 
-==== 17.1 Test Helpers Moved to Test Fixtures
+===== 17.1 Test Helpers Moved to Test Fixtures
 
 Several legacy Grails test helpers are no longer included in the production classpath.
 They are published as Gradle test fixtures instead, so applications and plugins that use them directly must request the fixture variant explicitly.
@@ -1695,6 +1695,14 @@ class MyGrailsPlugin extends Plugin {
 
 Both hooks may be used on the same plugin during migration; when a registrar and the DSL register a bean under the same name, the registrar's definition wins.
 
+**Unit tests follow.** `doWithSpring()` on the `GrailsUnitTest` trait — and so on every testing trait — is deprecated too. A test now declares its beans in a `beans` block with the `beans` DSL, as an application or plugin does; overrides `beanRegistrar()`, applied where an application's is; or declares a static nested `@Configuration` class, which its context registers ahead of the framework's auto-configurations. A `beans` block compiles into one such class, named `BeansConfiguration`, so a test that already declares a nested class of that name must rename it. A test that includes a plugin through `getIncludePlugins()` also gets the beans the plugin's `beans` block declares, which `defineBeans(plugin)` cannot apply. See <<unitTesting,Unit Testing>>.
+
+A unit test now registers an included plugin's `doWithSpring` and `beanRegistrar` beans before its configuration is read, as an application's early phase does. So a `@ConditionalOnMissingBean` bean, including one in the framework's own auto-configurations, backs off from them in a test as it does in an application. A test's `doWithSpring` bean now replaces an included plugin's bean of the same name, where the plugin's used to win. What a test's `doWithConfig` sets now also reaches the Spring `Environment` before the context's configuration is read, so a property condition, the framework's `@ConditionalOnProperty` included, sees it; it used to reach only `grailsApplication.config` and `${}` placeholders.
+
+A test that already has a static nested `@Configuration` class meant for something other than its own context — one built for an `ApplicationContextRunner`, say — now has it registered there as well; override `getConfigurationClasses()` to leave it out.
+
+**A `beans` block names a nested type's bean by its simple name.** In 8.0.0-M6 and 8.0.0-RC1, `bean(Outer.Helper)` with no name given registered a bean named `outer$Helper`. It is now `helper`, the type's decapitalized simple name, as documented. Name it explicitly, `bean('outer$Helper', Outer.Helper)`, if anything looks it up by the old name.
+
 **Bean-definition overriding edge case.** Grails defaults `spring.main.allow-bean-definition-overriding` to `true`, and under that default nothing changes: an application bean (from the application class, `resources.groovy` or `resources.xml`) that uses the same name as a plugin bean still replaces the plugin's bean. However, because plugin beans now register earlier and application beans register in a separate, later step, an application that explicitly sets `spring.main.allow-bean-definition-overriding` to `false` will see a `BeanDefinitionOverrideException` for an application bean that shadows a plugin bean — in previous releases the two definitions were merged before a single registry write, so the shadowing was silent even with overriding disabled.
 
 [[resources-groovy-configuration-classes]]
@@ -2022,7 +2030,7 @@ The renamed framework command packages are:
 |`org.apache.grails.security.cli.*` (grails-spring-security-cli)
 |===
 
-===== 35.1 Backwards Compatibility for Existing Command Plugins
+===== 37.1 Backwards Compatibility for Existing Command Plugins
 
 Grails 8 provides a deprecated, execution-only compatibility layer for already-published Grails 7 command
 plugins. Application commands created with `create-command` that implement
@@ -3068,7 +3076,7 @@ unqualified call from a controller to a method-declared tag changes.
 Three behaviors of the Quartz plugin changed in this release. All three concern what happens when
 something about a schedule is wrong; none of them require a change to a job class.
 
-===== 51.1 A trigger that can never fire no longer stops startup
+===== 52.1 A trigger that can never fire no longer stops startup
 
 A job whose trigger has no possible fire time — a cron expression whose last occurrence is in the past,
 or an end time that has already passed — used to make the application fail to start, because the
@@ -3091,7 +3099,7 @@ quartz:
     failOnNeverFiringTriggers: true
 ----
 
-===== 51.2 An application only removes the jobs it registered itself
+===== 52.2 An application only removes the jobs it registered itself
 
 When an application starts, the plugin removes the jobs in the job store which are no longer enabled job
 artefacts of the application. It used to consider *every* job in the store, which with a persistent job
@@ -3111,7 +3119,7 @@ with `quartz.jdbcStore` enabled the plugin warns about that at startup.
 removed automatically. A job class you deleted while running an older version leaves a row behind; remove
 it with `jobManagerService.removeJob(group, name)` or from the Quartz tables.
 
-===== 51.3 Scheduling methods report what is wrong instead of failing with a null pointer
+===== 52.3 Scheduling methods report what is wrong instead of failing with a null pointer
 
 The static scheduling methods every job class gets — `schedule`, `reschedule`, `unschedule`,
 `triggerNow`, `removeJob` — used to fail with a `NullPointerException` when called with a null argument,
@@ -4137,7 +4145,24 @@ it registered only when a controller source mentioned `@Scaffold` - decided by
 pages its scaffolded controllers need, a plugin's among them. A build that refers to `stageGroovyPages`
 fails with an unknown task; remove the reference.
 
-==== 75. JSON Rendering of Dates and Times Matches Spring Boot
+==== 75. File Renders Default to Attachment Disposition
+
+Grails 8 makes `render(file: ...)` safer by default. File responses now set
+`Content-Disposition: attachment` unless you opt out. If a `fileName` is supplied
+(or derived from a `File`), unsafe characters in that name are escaped before the
+header is written.
+
+Use `inline: true` when the file should stay inline, or set the
+`Content-Disposition` header yourself before calling `render` — Grails leaves an
+existing header alone.
+
+[source,groovy]
+----
+render(file: new File(absolutePath), fileName: 'report.pdf')
+render(file: new File(absolutePath), inline: true)
+----
+
+==== 76. JSON Rendering of Dates and Times Matches Spring Boot
 
 JSON rendered by `grails.converters.JSON` (`render ... as JSON`, and `respond` for a JSON request) and by JSON views,
 including `g.render`, writes date and time values the same way as Spring Boot's default Jackson `JsonMapper`.
@@ -4251,7 +4276,7 @@ while Jackson 3 writes an enum's `toString()`. The two differ only for enums tha
 NOTE: The HAL renderer, `grails.rest.render.hal.HalJsonRenderer` for `application/hal+json`, writes values with Groovy's
 default JSON generator and is not changed.
 
-==== 76. A Date With an Offset Is Bound to the Instant It Names
+==== 77. A Date With an Offset Is Bound to the Instant It Names
 
 Data binding, as controllers, command objects and `bindData` bind a request, reads a date and time
 written as ISO 8601 writes it, with a `T` between the date and the time, which is how Grails renders
