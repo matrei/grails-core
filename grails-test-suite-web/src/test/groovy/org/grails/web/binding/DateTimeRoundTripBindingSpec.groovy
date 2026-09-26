@@ -66,6 +66,24 @@ class DateTimeRoundTripBindingSpec extends Specification implements ControllerUn
         appointment.local == LocalDateTime.parse('2025-10-07T21:14:31.25')
     }
 
+    void 'binds a date before 1582 that Grails renders in JSON back to the same date'() {
+        given: 'a date the Julian calendar, which a Date is written in before 1582, names'
+        Calendar julian = new GregorianCalendar(TimeZone.getTimeZone('UTC'))
+        julian.clear()
+        julian.set(year, Calendar.JANUARY, 1)
+        request.method = 'POST'
+        request.json = ([at: julian.time] as JSON).toString()
+
+        when:
+        Appointment appointment = controller.save().appointment
+
+        then:
+        appointment.at == julian.time
+
+        where:
+        year << [1500, 44]
+    }
+
     void 'binds #sent as the instant it names, whatever the zone of the server'() {
         given:
         request.method = 'POST'
