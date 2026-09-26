@@ -4253,8 +4253,9 @@ default JSON generator and is not changed.
 
 ==== 76. A Date With an Offset Is Bound to the Instant It Names
 
-Data binding reads a date and time written as ISO 8601 and RFC 3339 write it, which is how Grails
-renders a date in JSON, before the formats `grails.databinding.dateFormats` lists. Previously:
+Data binding, as controllers, command objects and `bindData` bind a request, reads a date and time
+written as ISO 8601 writes it, with a `T` between the date and the time, which is how Grails renders
+a date in JSON, before the formats `grails.databinding.dateFormats` lists. Previously:
 
 * `2024-05-01T10:00:00Z`, which 8.0.0-RC1 renders for a `Date` or a `Calendar` whose milliseconds are
   zero, and which a client may send for any date, was read by the `yyyy-MM-dd'T'HH:mm:ss'Z'` format
@@ -4273,4 +4274,8 @@ before, and sees no change.
 A format in `grails.databinding.dateFormats` now binds a value only where it reads all of it. A
 value that a format read only the start of, such as `2024-05-01 10:00`, which `yyyy-MM-dd` read as
 midnight, losing the time, is now a binding error for the property. Add a format that reads the
-whole value, such as `yyyy-MM-dd HH:mm`, where such values are expected.
+whole value, such as `yyyy-MM-dd HH:mm`, where such values are expected. That includes a date and
+time with a space in place of the `T`, which RFC 3339 allows, such as `2024-05-01 10:00:00Z`: add
+`yyyy-MM-dd HH:mm:ssX` where clients send it.
+
+The date scalars of GraphQL, which read `grails.databinding.dateFormats` too, are not changed.

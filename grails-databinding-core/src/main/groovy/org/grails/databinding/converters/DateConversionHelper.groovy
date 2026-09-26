@@ -50,8 +50,8 @@ class DateConversionHelper implements ValueConverter {
 
     /**
      * Converts a date and time with an offset, such as {@code 2024-05-01T10:00:00Z} or
-     * {@code 2024-05-01T10:00:00+02:00}, as ISO 8601 and RFC 3339 write it, and as Grails renders a
-     * date in JSON, to the instant it names, whatever the zone of the server. Any other value is
+     * {@code 2024-05-01T10:00:00+02:00}, as ISO 8601 writes it, and as Grails renders a date in
+     * JSON, to the instant it names, whatever the zone of the server. Any other value is
      * converted by the first of the {@link #formatStrings} that reads all of it.
      */
     Object convert(value) {
