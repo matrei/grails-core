@@ -20,7 +20,12 @@
 package grails.plugin.json.view
 
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.temporal.TemporalAccessor
+import java.time.temporal.TemporalAmount
+
+import javax.xml.datatype.XMLGregorianCalendar
 
 import groovy.json.DefaultJsonGenerator
 import groovy.json.JsonGenerator
@@ -61,11 +66,21 @@ class JsonViewGenerator extends DefaultJsonGenerator {
     }
 
     /**
+     * Whether values of the type are dates or times that one of the converters of this generator writes, such as the
+     * date and time converters of JSON views, so that {@code g.render} writes them as it writes other simple values.
+     * A converter that an application registers for any other type does not change how {@code g.render} renders it.
+     *
      * @param type a value type
-     * @return whether one of the converters of this generator writes values of the type
+     * @return whether values of the type are dates or times that a converter of this generator writes
      */
-    boolean hasConverter(Class<?> type) {
-        findConverter(type) != null
+    boolean hasDateTimeConverter(Class<?> type) {
+        isDateTimeType(type) && findConverter(type) != null
+    }
+
+    private static boolean isDateTimeType(Class<?> type) {
+        TemporalAccessor.isAssignableFrom(type) || TemporalAmount.isAssignableFrom(type) ||
+                ZoneId.isAssignableFrom(type) || TimeZone.isAssignableFrom(type) || Date.isAssignableFrom(type) ||
+                XMLGregorianCalendar.isAssignableFrom(type) || javax.xml.datatype.Duration.isAssignableFrom(type)
     }
 
     /**

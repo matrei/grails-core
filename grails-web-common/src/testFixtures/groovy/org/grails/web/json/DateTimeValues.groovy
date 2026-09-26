@@ -16,7 +16,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
-package grails.plugin.json.view
+package org.grails.web.json
 
 import java.sql.Time
 import java.sql.Timestamp
@@ -40,7 +40,8 @@ import java.time.ZonedDateTime
 import javax.xml.datatype.DatatypeFactory
 
 /**
- * Date and time values, and maps keyed by them, whose JSON is compared with Spring Boot's Jackson rendering.
+ * Date and time values, and maps keyed by them, whose JSON is compared with Spring Boot's Jackson rendering, by the
+ * specs of {@code grails.converters.JSON} and of JSON views.
  */
 class DateTimeValues {
 

@@ -109,9 +109,10 @@ application and a Spring Boot application return the same JSON for the same valu
 | the ID, such as `"America/Sao_Paulo"` or `"-03:00"`
 |===
 
-A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its keys the same way as those values; other map
-keys render with their `toString()`. JSON views render dates and times the same way, and data binding binds a `Month`
-back from its number.
+A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its keys as those values render by default, such as
+`"2025-10-08T07:48:46.407Z"`, also where `grails.converters.json.date` or a registered marshaller changes how the values
+render; other map keys render with their `toString()`. JSON views render dates and times the same way, and data binding
+binds a `Month` back from its number.
 
 Setting `grails.converters.json.date` to `javascript` renders `java.util.Date` values as JavaScript `new Date(...)`
 constructors instead. To render a type differently, register an object marshaller for it, for example in `BootStrap.init`:

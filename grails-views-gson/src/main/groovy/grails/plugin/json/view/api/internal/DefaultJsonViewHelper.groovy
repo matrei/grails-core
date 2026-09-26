@@ -134,19 +134,19 @@ class DefaultJsonViewHelper extends DefaultGrailsViewHelper {
 
     boolean isSimpleType(Class propertyType, value) {
         MappingFactory.isSimpleType(propertyType.name) || (value instanceof Enum) || (value instanceof Map) ||
-                hasConverter(value != null ? value.getClass() : propertyType)
+                hasDateTimeConverter(value != null ? value.getClass() : propertyType)
     }
 
     /**
-     * Whether the JSON generator of the view has a converter for values of the type, such as the date and time
-     * converters of JSON views, so that the generator rather than a template writes them.
+     * Whether values of the type are dates or times that the JSON generator of the view has a converter for, such as
+     * the date and time converters of JSON views, so that the generator rather than a template writes them.
      *
      * @param type a value type
-     * @return whether values of the type are written by a converter
+     * @return whether values of the type are dates or times written by a converter
      */
-    protected boolean hasConverter(Class type) {
+    protected boolean hasDateTimeConverter(Class type) {
         groovy.json.JsonGenerator generator = getGenerator()
-        generator instanceof JsonViewGenerator && ((JsonViewGenerator) generator).hasConverter(type)
+        generator instanceof JsonViewGenerator && ((JsonViewGenerator) generator).hasDateTimeConverter(type)
     }
 
     /**

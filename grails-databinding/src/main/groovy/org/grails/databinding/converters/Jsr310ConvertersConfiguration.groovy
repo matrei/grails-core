@@ -366,7 +366,11 @@ class Jsr310ConvertersConfiguration {
 
             @Override
             Object convert(Object value) {
-                Month.of(value instanceof Number ? ((Number) value).intValue() : value.toString().trim().toInteger())
+                // a number with a fractional part is not a month, as one out of range is not
+                int number = value instanceof Number ?
+                        (value instanceof BigDecimal ? (BigDecimal) value : new BigDecimal(value.toString())).intValueExact() :
+                        value.toString().trim().toInteger()
+                Month.of(number)
             }
 
             @Override
@@ -438,10 +442,19 @@ class Jsr310ConvertersConfiguration {
         }
 
         /**
-         * Converts a value written as ISO 8601 writes the type, as Grails renders it in JSON, or
-         * else by the first of the configured date formats that reads all of it.
+         * Converts a value with the first of the configured date formats that reads all of it.
          *
-         * @param iso the ISO 8601 form of the type
+         * @param callable parses the value with the formatter it is given
+         */
+        T convert(Object value, Closure callable) {
+            convert(value, null, callable)
+        }
+
+        /**
+         * Converts a value in the ISO 8601 form of the type, which is how Grails renders it in JSON, or else with
+         * the first of the configured date formats that reads all of it.
+         *
+         * @param iso the ISO 8601 formatter of the type, or {@code null} to use only the configured formats
          * @param callable parses the value with the formatter it is given
          */
         T convert(Object value, DateTimeFormatter iso, Closure callable) {
@@ -450,10 +463,12 @@ class Jsr310ConvertersConfiguration {
                 if (!value) {
                     return null
                 }
-                try {
-                    return (T) callable.call(iso)
-                } catch (DateTimeParseException ignored) {
-                    // Not the ISO 8601 form, so one of the configured formats.
+                if (iso != null) {
+                    try {
+                        return (T) callable.call(iso)
+                    } catch (DateTimeParseException ignored) {
+                        // Not the ISO 8601 form, so one of the configured formats.
+                    }
                 }
                 def firstException
                 formatStrings.each { String format ->

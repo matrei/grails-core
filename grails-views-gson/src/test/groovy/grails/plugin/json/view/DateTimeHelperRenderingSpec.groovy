@@ -37,10 +37,12 @@ import java.time.ZonedDateTime
 import javax.xml.datatype.DatatypeFactory
 import javax.xml.datatype.XMLGregorianCalendar
 
+import groovy.json.JsonGenerator
 import groovy.json.JsonSlurper
 
 import spock.lang.Shared
 import spock.lang.Specification
+import spock.lang.TempDir
 import tools.jackson.databind.json.JsonMapper
 
 import grails.persistence.Entity
@@ -57,6 +59,9 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
 
     @Shared
     Instant instant = Instant.parse('2025-10-08T07:48:46.407254Z')
+
+    @TempDir
+    File servicesDir
 
     void "g.render of a domain instance writes a Month property as its number"() {
         given:
@@ -96,6 +101,35 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
 
         then:
         parse(result.jsonText) == parse(jackson.writeValueAsString(pogo.properties.findAll { it.key != 'class' }))
+    }
+
+    void "an application's converter for its own type does not make g.render skip that type's properties or template"() {
+        given: 'an engine that loads an application converter for Point, as ServiceLoader finds converters'
+        def services = new File(servicesDir, 'META-INF/services/groovy.json.JsonGenerator$Converter')
+        services.parentFile.mkdirs()
+        services.text = PointJsonConverter.name
+        def classLoader = new URLClassLoader([servicesDir.toURI().toURL()] as URL[], DateTimeHelperRenderingSpec.classLoader)
+        def engine = new JsonViewTemplateEngine(new JsonViewConfiguration(), classLoader)
+        def template = engine.createTemplate('''
+            model {
+                Object object
+            }
+            json g.render(object)
+        ''')
+        def point = new Point(x: 1, y: 2)
+
+        expect: 'the converter is loaded, and writes a Point that the view writes itself'
+        engine.generator.toJson(point) == '"1,2"'
+
+        when: 'a Point is the property of an object, and a value in a map'
+        def property = new StringWriter()
+        template.make(object: new PointHolder(point: point, duration: Duration.ofMinutes(90))).writeTo(property)
+        def mapValue = new StringWriter()
+        template.make(object: [point: point]).writeTo(mapValue)
+
+        then: 'the Point is rendered property by property, and a date or time still by its converter'
+        parse(property.toString()) == [point: [x: 1, y: 2], duration: 'PT1H30M']
+        parse(mapValue.toString()) == [point: [x: 1, y: 2]]
     }
 
     void "g.render of a map writes date keys and values the same way as Spring Boot"() {
@@ -183,6 +217,30 @@ class DateTimeHolder {
     OffsetTime offsetTime
     Time time
     List<Date> dates
+}
+
+class Point {
+    int x
+    int y
+}
+
+class PointHolder {
+    Point point
+    Duration duration
+}
+
+class PointJsonConverter implements JsonGenerator.Converter {
+
+    @Override
+    boolean handles(Class<?> type) {
+        Point == type
+    }
+
+    @Override
+    Object convert(Object value, String key) {
+        Point point = (Point) value
+        "${point.x},${point.y}".toString()
+    }
 }
 
 @Entity

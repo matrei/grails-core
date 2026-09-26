@@ -22,6 +22,8 @@ import spock.lang.Shared
 import spock.lang.Specification
 
 import java.time.*
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 class Jsr310ConvertersConfigurationSpec extends Specification {
 
@@ -304,6 +306,51 @@ class Jsr310ConvertersConfigurationSpec extends Specification {
         !converter.canConvert('SEPTEMBER')
         converter.convert(1) == Month.JANUARY
         converter.convert(9) == Month.SEPTEMBER
+        converter.convert(9.0) == Month.SEPTEMBER
         converter.convert(' 12 ') == Month.DECEMBER
+    }
+
+    void "monthValueConverter rejects #value, as it rejects a number out of range"() {
+        when:
+        config.monthValueConverter().convert(value)
+
+        then:
+        thrown(RuntimeException)
+
+        where:
+        value << [9.7, 9.7d, 9.5f, Double.NaN, 13, 0]
+    }
+
+    void "a Jsr310DateValueConverter subclass calling convert(value, callable) still reads only the configured formats"() {
+        given:
+        def converter = new FormatsOnlyLocalTimeConverter(config)
+
+        expect:
+        converter.convert('10:00:00') == LocalTime.of(10, 0)
+
+        when: 'a value that only ISO 8601 reads'
+        converter.convert('10:00:00.5')
+
+        then:
+        thrown(DateTimeParseException)
+    }
+}
+
+class FormatsOnlyLocalTimeConverter extends Jsr310ConvertersConfiguration.Jsr310DateValueConverter<LocalTime> {
+
+    FormatsOnlyLocalTimeConverter(Jsr310ConvertersConfiguration configuration) {
+        super(configuration)
+    }
+
+    @Override
+    LocalTime convert(Object value) {
+        convert(value) { DateTimeFormatter formatter ->
+            LocalTime.parse((CharSequence) value, formatter)
+        }
+    }
+
+    @Override
+    Class<?> getTargetType() {
+        LocalTime
     }
 }

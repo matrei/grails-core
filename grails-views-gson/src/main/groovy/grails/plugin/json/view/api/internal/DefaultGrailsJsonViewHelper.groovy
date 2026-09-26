@@ -488,10 +488,10 @@ class DefaultGrailsJsonViewHelper extends DefaultJsonViewHelper implements Grail
         JsonView jsonView = (JsonView) view
         MappingFactory mappingFactory = jsonView.mappingContext?.mappingFactory
         if (mappingFactory != null) {
-            return mappingFactory.isSimpleType(propertyType) || (value instanceof Enum) || (value instanceof Map) || hasConverter(propertyType)
+            return mappingFactory.isSimpleType(propertyType) || (value instanceof Enum) || (value instanceof Map) || hasDateTimeConverter(propertyType)
         }
         else {
-            return MappingFactory.isSimpleType(propertyType.getName()) || (value instanceof Enum) || (value instanceof Map) || hasConverter(propertyType)
+            return MappingFactory.isSimpleType(propertyType.getName()) || (value instanceof Enum) || (value instanceof Map) || hasDateTimeConverter(propertyType)
         }
 
     }
@@ -693,7 +693,7 @@ class DefaultGrailsJsonViewHelper extends DefaultJsonViewHelper implements Grail
 
         if (isStringType(prop.type)) {
             jsonDelegate.call(propertyName, value.toString())
-        } else if (prop.type.isEnum() && !hasConverter(value.getClass())) {
+        } else if (prop.type.isEnum() && !hasDateTimeConverter(value.getClass())) {
             jsonDelegate.call(propertyName, ((Enum) value).name())
         } else if (value instanceof TimeZone) {
             jsonDelegate.call(propertyName, value.getID())

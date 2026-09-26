@@ -48,6 +48,7 @@ import grails.converters.JSON
 import grails.core.DefaultGrailsApplication
 import org.grails.web.converters.configuration.ConvertersConfigurationHolder
 import org.grails.web.converters.configuration.ConvertersConfigurationInitializer
+import org.grails.web.json.DateTimeValues
 import org.grails.web.json.JSONWriter
 
 /**

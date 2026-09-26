@@ -4267,7 +4267,9 @@ example `JSON.registerObjectMarshaller(Month) { Month month -> month.name() }` i
 The default JSON marshallers have implicit priorities that follow their order (-1, -2, and so on), and the marshallers
 added in 8.0 shift those, so a marshaller registered with an explicit negative priority may now come before or after
 different defaults. Marshallers registered with the default priority of 0, or higher, still take precedence over all
-of the defaults.
+of the defaults. A marshaller registered for `Date` or `Calendar`, like `grails.converters.json.date` set to
+`javascript`, changes how those values render with `grails.converters.JSON`, but not map keys of those types, which
+keep the form in the table above. JSON views format map keys with `dateFormat` when it is set, as described above.
 
 NOTE: Enums other than `Month` still render by `name()`, as described in section 8, Enum Serialization Default Changed,
 while Jackson 3 writes an enum's `toString()`. The two differ only for enums that override `toString()`, such as
@@ -4278,9 +4280,9 @@ default JSON generator and is not changed.
 
 ==== 77. A Date With an Offset Is Bound to the Instant It Names
 
-Data binding, as controllers, command objects and `bindData` bind a request, reads a date and time
-written as ISO 8601 writes it, with a `T` between the date and the time, which is how Grails renders
-a date in JSON, before the formats `grails.databinding.dateFormats` lists. Previously:
+When controllers, command objects and `bindData` bind a request, a date and time in its ISO 8601
+form, with a `T` between the date and the time, which is how Grails renders a date in JSON, is now
+read first, before the formats that `grails.databinding.dateFormats` lists are tried. Previously:
 
 * `2024-05-01T10:00:00Z`, which 8.0.0-RC1 renders for a `Date` or a `Calendar` whose milliseconds are
   zero, and which a client may send for any date, was read by the `yyyy-MM-dd'T'HH:mm:ss'Z'` format
