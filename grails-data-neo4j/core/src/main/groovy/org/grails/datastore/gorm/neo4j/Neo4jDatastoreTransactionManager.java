@@ -70,13 +70,18 @@ public class Neo4jDatastoreTransactionManager extends DatastoreTransactionManage
     @Override
     protected void doBegin(Object o, TransactionDefinition definition) throws TransactionException {
         TransactionObject txObject = (TransactionObject) o;
+        if (txObject.getSessionHolder() == null) {
+            // The surrounding transaction was suspended (REQUIRES_NEW): this one gets a session of its own
+            txObject.setSession(getDatastore().connect());
+        }
 
         Neo4jSession session = null;
         try {
             session = (Neo4jSession) txObject.getSessionHolder().getSession();
 
             if (definition.isReadOnly()) {
-                // Just set to NEVER in case of a new Session for this transaction.
+                // Just set to NEVER in case of a new Session for this transaction. Put back when it completes.
+                txObject.setPreviousFlushMode(session.getFlushMode());
                 session.setFlushMode(FlushModeType.COMMIT);
             }
 
@@ -86,6 +91,7 @@ public class Neo4jDatastoreTransactionManager extends DatastoreTransactionManage
             if (timeout != TransactionDefinition.TIMEOUT_DEFAULT) {
                 tx.setTimeout(timeout);
             }
+            txObject.setTransaction(tx);
 
             // Bind the session holder to the thread.
             if (txObject.isNewSessionHolder()) {

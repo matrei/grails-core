@@ -21,6 +21,8 @@ package org.grails.datastore.mapping.transactions;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
 
 import org.springframework.transaction.support.ResourceHolderSupport;
@@ -37,6 +39,7 @@ public class SessionHolder extends ResourceHolderSupport {
 
     private Deque<Session> sessions = new LinkedBlockingDeque<>();
     private Object creator = null;
+    private final Set<Session> transactionSessions = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public SessionHolder(Session session) {
         sessions.add(session);
@@ -70,6 +73,44 @@ public class SessionHolder extends ResourceHolderSupport {
     @Deprecated
     public void setTransaction(Transaction<?> transaction) {
         // no-op. here for compatibility
+    }
+
+    /**
+     * Whether a {@link DatastoreTransactionManager} transaction is in progress on the session this
+     * holder hands out ({@link #getSession()}, the most recently bound): from when the manager begins
+     * one on it until that transaction commits or rolls back. A transaction started meanwhile joins it
+     * rather than beginning another on the same session. A session bound on top of it, as
+     * {@code withNewSession} binds one, has no transaction in progress until one is begun on it.
+     *
+     * <p>Not {@code getTransaction().isActive()}: a session's transaction object can outlive its
+     * transaction, and some report themselves active whether or not one is in progress.</p>
+     *
+     * @return {@code true} while a transaction is in progress on the session this holder hands out
+     */
+    public boolean isTransactionActive() {
+        Session session = getSession();
+        return session != null && transactionSessions.contains(session);
+    }
+
+    /**
+     * Records that a transaction is, or is no longer, in progress on the given session.
+     *
+     * @param session the session the transaction was begun on
+     * @param active whether it is in progress
+     */
+    public void setTransactionActive(Session session, boolean active) {
+        if (active) {
+            transactionSessions.add(session);
+        }
+        else {
+            transactionSessions.remove(session);
+        }
+    }
+
+    @Override
+    public void clear() {
+        super.clear();
+        transactionSessions.clear();
     }
 
     public Session getSession() {

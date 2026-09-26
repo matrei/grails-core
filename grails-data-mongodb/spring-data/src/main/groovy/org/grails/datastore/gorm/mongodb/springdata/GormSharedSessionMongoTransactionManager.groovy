@@ -48,10 +48,11 @@ import org.grails.datastore.mapping.transactions.DatastoreTransactionManager
  * ({@code grails.mongodb.transactional = true}); without an active {@link ClientSession} there is
  * nothing to share and Spring Data operations run outside of a transaction as before.</p>
  *
- * <p><strong>Propagation:</strong> like GORM's {@link DatastoreTransactionManager}, this manager
- * supports a single flat transaction ({@code PROPAGATION_REQUIRED}); Spring-native suspension
- * propagations such as {@code REQUIRES_NEW} and {@code NESTED} are not supported and behave as
- * {@code REQUIRED} (they join the surrounding transaction rather than suspending it).</p>
+ * <p><strong>Propagation:</strong> as for GORM's {@link DatastoreTransactionManager}. A transaction
+ * started inside another joins it, for Spring Data as for GORM. {@code REQUIRES_NEW} suspends both:
+ * the new transaction runs in a GORM session and {@link ClientSession} of its own, which its
+ * {@code MongoTemplate} calls use, and the outer transaction's are restored when it completes.
+ * {@code NESTED} is not supported.</p>
  *
  * @since 8.0
  */
@@ -76,6 +77,27 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
     }
 
     @Override
+    protected Object doSuspend(Object transaction) {
+        // Spring Data's holder names the suspended transaction's ClientSession: left bound, the next
+        // transaction's MongoTemplate calls would run in the suspended one
+        Object springData = TransactionSynchronizationManager.hasResource(databaseFactory) ?
+                TransactionSynchronizationManager.unbindResource(databaseFactory) : null
+        new SuspendedSessions(super.doSuspend(transaction), springData)
+    }
+
+    @Override
+    protected void doResume(Object transaction, Object suspendedResources) {
+        SuspendedSessions suspended = (SuspendedSessions) suspendedResources
+        super.doResume(transaction, suspended.gorm)
+        if (TransactionSynchronizationManager.hasResource(databaseFactory)) {
+            TransactionSynchronizationManager.unbindResource(databaseFactory)
+        }
+        if (suspended.springData != null) {
+            TransactionSynchronizationManager.bindResource(databaseFactory, suspended.springData)
+        }
+    }
+
+    @Override
     protected void doCleanupAfterCompletion(Object transaction) {
         if (TransactionSynchronizationManager.hasResource(databaseFactory)) {
             TransactionSynchronizationManager.unbindResource(databaseFactory)
@@ -86,5 +108,16 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
     private ClientSession currentClientSession() {
         def session = getDatastore().getCurrentSession()
         return session instanceof AbstractMongoSession ? ((AbstractMongoSession) session).getClientSession() : null
+    }
+
+    /** What a suspended transaction had bound: GORM's session holder, and Spring Data's, if any */
+    private static final class SuspendedSessions {
+        final Object gorm
+        final Object springData
+
+        SuspendedSessions(Object gorm, Object springData) {
+            this.gorm = gorm
+            this.springData = springData
+        }
     }
 }

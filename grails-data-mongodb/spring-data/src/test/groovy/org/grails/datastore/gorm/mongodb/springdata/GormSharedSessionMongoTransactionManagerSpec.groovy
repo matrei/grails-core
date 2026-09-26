@@ -34,9 +34,10 @@ import org.grails.datastore.mapping.transactions.TransactionObject
  * The end-to-end contract of this class - a shared MongoDB transaction spanning a GORM save and a
  * Spring Data write, committed/rolled back together, with no resource leaked across transactions -
  * is already proven functionally by {@link UnifiedMongoTransactionSpec} against a real MongoDB
- * replica set. This spec covers the two branches that spec cannot reach without a second real
- * datastore: doBegin/doCleanupAfterCompletion's own conditional logic in isolation, exercised
- * directly since both are protected extension points of this class in the same package.
+ * replica set. This spec covers the branches that spec cannot reach without a second real
+ * datastore: doBegin/doCleanupAfterCompletion's and doSuspend/doResume's own conditional logic in
+ * isolation, exercised directly since all are protected extension points of this class in the same
+ * package.
  */
 class GormSharedSessionMongoTransactionManagerSpec extends Specification {
 
@@ -116,6 +117,45 @@ class GormSharedSessionMongoTransactionManagerSpec extends Specification {
 
         then:
         !TransactionSynchronizationManager.hasResource(databaseFactory)
+    }
+
+    void "doSuspend un-binds the Spring Data holder with GORM's, and doResume binds both back"() {
+        given:
+        AbstractMongoSession session = Mock(AbstractMongoSession)
+        session.clientSession >> Mock(ClientSession)
+        datastore.getCurrentSession() >> session
+        TransactionObject txObject = begin(session)
+        Object springData = TransactionSynchronizationManager.getResource(databaseFactory)
+        Object gorm = TransactionSynchronizationManager.getResource(datastore)
+
+        when:
+        Object suspended = manager.doSuspend(txObject)
+
+        then: "a transaction begun next binds its own"
+        !TransactionSynchronizationManager.hasResource(databaseFactory)
+        !TransactionSynchronizationManager.hasResource(datastore)
+
+        when:
+        manager.doResume(txObject, suspended)
+
+        then:
+        TransactionSynchronizationManager.getResource(databaseFactory).is(springData)
+        TransactionSynchronizationManager.getResource(datastore).is(gorm)
+    }
+
+    void "doSuspend and doResume leave Spring Data unbound when the suspended transaction had no holder"() {
+        given: "server-side transactions are disabled, so the suspended transaction bound no Spring Data holder"
+        AbstractMongoSession session = Mock(AbstractMongoSession)
+        session.clientSession >> null
+        datastore.getCurrentSession() >> session
+        TransactionObject txObject = begin(session)
+
+        when:
+        manager.doResume(txObject, manager.doSuspend(txObject))
+
+        then:
+        !TransactionSynchronizationManager.hasResource(databaseFactory)
+        TransactionSynchronizationManager.hasResource(datastore)
     }
 
     void "doCleanupAfterCompletion is a no-op for the Spring Data resource when nothing was bound"() {

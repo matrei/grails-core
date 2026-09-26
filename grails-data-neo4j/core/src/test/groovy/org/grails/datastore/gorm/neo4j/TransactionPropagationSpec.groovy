@@ -23,7 +23,6 @@ import org.apache.grails.data.neo4j.core.Neo4jGormDatastoreSpec
 import org.apache.grails.data.testing.tck.domains.Person
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.TransactionStatus
-import spock.lang.Ignore
 
 /**
  * @author graemerocher
@@ -51,7 +50,6 @@ class TransactionPropagationSpec extends Neo4jGormDatastoreSpec {
 
     }
 
-    @Ignore // Neo4j
     void "Test nested REQUIRES_NEW transaction"() {
         when:"An entity is persisted in a nested transaction"
         Person.withTransaction {
