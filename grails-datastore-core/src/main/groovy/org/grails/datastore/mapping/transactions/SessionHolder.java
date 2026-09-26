@@ -39,7 +39,8 @@ public class SessionHolder extends ResourceHolderSupport {
 
     private Deque<Session> sessions = new LinkedBlockingDeque<>();
     private Object creator = null;
-    private final Set<Session> transactionSessions = Collections.newSetFromMap(new IdentityHashMap<>());
+    // Synchronized to match the session deque, which is concurrent
+    private final Set<Session> transactionSessions = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
 
     public SessionHolder(Session session) {
         sessions.add(session);

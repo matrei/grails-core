@@ -257,6 +257,20 @@ class MongoTransactionSpec extends EmbeddedReplicaSetSpec {
         names() == ["flushed"]
     }
 
+    void "a write flushed in a read-write transaction inside a read-only one is not part of any transaction"() {
+        when: "the read-only transaction fails after the joined one flushed a write"
+        TxPerson.withTransaction([readOnly: true]) {
+            TxPerson.withTransaction {
+                new TxPerson(name: "flushed").save(flush: true)
+            }
+            throw new RuntimeException("read-only work failed")
+        }
+
+        then: "the write stays: a read-only transaction has no server-side transaction to roll it back with"
+        thrown(RuntimeException)
+        names() == ["flushed"]
+    }
+
     void "a synchronization registered in a joined transaction runs once, after the outer commit"() {
         given:
         List<Long> seen = []

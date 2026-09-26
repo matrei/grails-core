@@ -385,6 +385,32 @@ class DatastoreTransactionManagerSpec extends Specification {
         1 * transaction.commit()
     }
 
+    void "commit flushes, and rollback clears, the session the transaction began on, not one bound on top of it"() {
+        given:
+        Session onTop = Mock(Session)
+
+        when:
+        new TransactionTemplate(transactionManager).execute {
+            (TransactionSynchronizationManager.getResource(datastore) as SessionHolder).addSession(onTop)
+        }
+
+        then:
+        1 * session.flush()
+        0 * onTop.flush()
+        1 * transaction.commit()
+
+        when:
+        new TransactionTemplate(transactionManager).execute { status ->
+            (TransactionSynchronizationManager.getResource(datastore) as SessionHolder).addSession(onTop)
+            status.setRollbackOnly()
+        }
+
+        then:
+        1 * session.clear()
+        0 * onTop.clear()
+        1 * transaction.rollback()
+    }
+
     void "a read-only transaction puts back the flush mode it changed"() {
         given:
         session.getFlushMode() >> FlushModeType.AUTO
