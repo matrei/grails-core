@@ -799,8 +799,10 @@ bodies, and the paging of its listing.
   other than the errors view, or a custom renderer that renders another shape is described with
   `@ApiResponse`.
 * A date is described as a `date-time`. Grails binds it with the formats
-  `grails.databinding.dateFormats` lists, which by default read a time with an offset or `Z` only
-  with milliseconds, such as `2024-05-01T10:00:00.000+02:00`. Without them, as in
-  `2024-05-01T10:00:00Z`, the time is read in the zone of the server.
+  `grails.databinding.dateFormats` lists, which by default read the offset or `Z` of a time only
+  when it has three digits of milliseconds, such as `2024-05-01T10:00:00.000+02:00`, or an offset
+  written without a colon, such as `2024-05-01T10:00:00+0200`. Otherwise, as in
+  `2024-05-01T10:00:00Z` or `2024-05-01T10:00:00+02:00`, the time is read in the zone of the server,
+  and fewer digits of milliseconds are misread: `2024-05-01T10:00:00.5Z` is read as 5 milliseconds.
 * A variable capturing several segments, such as `$path**`, is described as a path parameter, which
   OpenAPI allows only one segment; a client must not encode the `/` it holds.
