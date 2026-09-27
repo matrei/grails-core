@@ -396,7 +396,7 @@ class GroovyPagePluginFunctionalSpec extends GradleSpecification {
         File scaffolded = new File(projectDir, 'build/generated/scaffolded-views/grails-scaffolded')
 
         when:
-        def result = executeTask('generateScaffoldedViews', ['--info'])
+        def result = executeTask('generateScaffoldedViews', ['--info', '--configuration-cache'])
 
         then: 'the plugin on the classpath the pages are compiled against has its pages generated, from every copy of the template'
         assertTaskSuccess('generateScaffoldedViews', result)
@@ -407,6 +407,18 @@ class GroovyPagePluginFunctionalSpec extends GradleSpecification {
         !new File(scaffolded, 'com.gadget.Gadget').exists()
         result.output.contains('No page is expanded for gadget-plugin.jar!/com/gadget/GadgetController.class: ' +
                 'the domain class it scaffolds, com.gadget.Gadget, is not on the classpath the pages are compiled against')
+
+        and: 'the configuration could be stored, with the page compilation\'s classpath read through a closure'
+        result.output.contains('Configuration cache entry stored')
+
+        when: 'it runs again from the stored entry, with its output removed so the task has to run'
+        new File(projectDir, 'build/generated/scaffolded-views').deleteDir()
+        def reused = executeTask('generateScaffoldedViews', ['--info', '--configuration-cache'])
+
+        then: 'the same pages are generated, and the runtime-only plugin still has none'
+        reused.output.contains('Configuration cache entry reused')
+        new File(scaffolded, 'com.widget.Widget').isDirectory()
+        !new File(scaffolded, 'com.gadget.Gadget').exists()
 
         when: 'the pages are compiled'
         def compilation = executeTask('compileGroovyPages')
@@ -425,12 +437,21 @@ class GroovyPagePluginFunctionalSpec extends GradleSpecification {
                 classpath = classpath + files('gadget-plugin.jar')
             }
         """)
-        def widened = executeTask('generateScaffoldedViews')
+        def widened = executeTask('generateScaffoldedViews', ['--configuration-cache'])
 
         then: 'its pages are generated too, since the check reads the page compilation\'s own classpath'
         assertTaskSuccess('generateScaffoldedViews', widened)
+        widened.output.contains('Configuration cache entry stored')
         new File(scaffolded, 'com.gadget.Gadget').listFiles()*.listFiles().flatten()*.text.sort() ==
                 ['gadget show ${className}', 'widget show ${className}']
+
+        when: 'that entry is reused, with the output removed again'
+        new File(projectDir, 'build/generated/scaffolded-views').deleteDir()
+        def rewidened = executeTask('generateScaffoldedViews', ['--configuration-cache'])
+
+        then: 'the widened classpath came back from the entry'
+        rewidened.output.contains('Configuration cache entry reused')
+        new File(scaffolded, 'com.gadget.Gadget').isDirectory()
     }
 
     def "a project that scaffolds nothing generates nothing"() {
