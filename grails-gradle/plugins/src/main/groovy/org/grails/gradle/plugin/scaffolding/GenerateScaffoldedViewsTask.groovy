@@ -156,7 +156,7 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
     /**
      * The classpath the pages are compiled against: normally {@code compileGroovyPages}'. A page
      * names the type of its model, so a plugin's controller has its pages expanded only where the
-     * domain class it scaffolds is on it.
+     * domain class it scaffolds is on it. Left empty, no plugin's domain class is checked.
      */
     @CompileClasspath
     abstract ConfigurableFileCollection getPageClasspath()
@@ -389,6 +389,7 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
         // The project's classes are added although the plugin's wiring already puts them on
         // pageClasspath: a task registered by hand may not.
         URL[] pageTypes = (classesDirs.files + pageClasspath.files).collect { it.toURI().toURL() } as URL[]
+        boolean checksPageTypes = !pageClasspath.empty
         new URLClassLoader(classpath, (ClassLoader) null).withCloseable { URLClassLoader resources ->
             for (File dir : classesDirs.files) {
                 if (dir.isDirectory()) {
@@ -404,7 +405,10 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
             }
             // with the platform's modules as the parent, as the page compiler has them, so a domain
             // type from java.sql resolves as java.lang's do
-            new URLClassLoader(pageTypes, ClassLoader.platformClassLoader).withCloseable { URLClassLoader compilable ->
+            new URLClassLoader(pageTypes, ClassLoader.platformClassLoader).withCloseable { URLClassLoader pageLoader ->
+                // none where a task registered by hand leaves pageClasspath empty, as one written
+                // before it existed does: every plugin controller is then expanded, as it was
+                ClassLoader compilable = checksPageTypes ? pageLoader : null
                 for (File entry : runtimeClasspath.files) {
                     if (entry.isFile()) {
                         openArchive(entry)?.withCloseable { JarFile jar ->
@@ -455,11 +459,13 @@ abstract class GenerateScaffoldedViewsTask extends DefaultTask {
      * <p>The check is necessary, not sufficient. A page can still name another type the compiler
      * cannot resolve, such as an association's, and that page is left out with a warning as
      * before.</p>
+     *
+     * @param compilable the types the pages are compiled against, or {@code null} to check nothing
      */
     private Controller readPluginController(byte[] bytes, String origin, ClassLoader resources, ClassLoader compilable,
                                             Map<String, Boolean> ancestors) {
         Controller controller = readController(bytes, origin, resources, ancestors)
-        if (controller != null && compilable.getResource("${controller.domain.replace('.', '/')}.class") == null) {
+        if (controller != null && compilable != null && compilable.getResource("${controller.domain.replace('.', '/')}.class") == null) {
             logger.info('No page is expanded for {}: the domain class it scaffolds, {}, is not on the classpath the pages ' +
                     'are compiled against, as happens to a plugin this project has only at runtime', origin, controller.domain)
             return null

@@ -604,6 +604,7 @@ class GenerateScaffoldedViewsTaskSpec extends Specification {
                               'com/plugin/TimestampController.class': scaffolded('com/plugin/TimestampController', 'java/sql/Timestamp')])
             def task = task()
             task.runtimeClasspath.from(plugin)
+            task.pageClasspath.from(plugin)
 
         when:
             task.generate()
@@ -613,7 +614,7 @@ class GenerateScaffoldedViewsTaskSpec extends Specification {
             handed(task)['java.sql.Timestamp/show'] == ['show ${className}']
     }
 
-    void "a plugin controller scaffolding a domain class of the project's own is expanded"() {
+    void "a plugin controller scaffolding a domain class of the project's own is expanded, though the page classpath omits the project's classes"() {
         given:
             writeClass(classesDir, 'com/example/Widget', plain('com/example/Widget', 'java/lang/Object') { })
             File plugin = new File(projectDir, 'plugin.jar')
@@ -621,12 +622,28 @@ class GenerateScaffoldedViewsTaskSpec extends Specification {
                               'com/plugin/WidgetController.class': scaffolded('com/plugin/WidgetController', 'com/example/Widget')])
             def task = task()
             task.runtimeClasspath.from(plugin)
+            task.pageClasspath.from(plugin)
 
         when:
             task.generate()
 
         then:
             handed(task)['com.example.Widget/show'] == ['show ${className}']
+    }
+
+    void 'a task registered without a page classpath expands every plugin controller, as before it had one'() {
+        given: 'a plugin whose domain class is on no classpath the task was given for the pages'
+            File plugin = new File(projectDir, 'gadget-plugin.jar')
+            writeJar(plugin, [(PLUGIN_DESCRIPTOR): '<plugin/>'.bytes,
+                              'com/gadget/GadgetController.class': scaffolded('com/gadget/GadgetController', 'com/gadget/Gadget')])
+            def task = task()
+            task.runtimeClasspath.from(plugin)
+
+        when:
+            task.generate()
+
+        then:
+            handed(task)['com.gadget.Gadget/show'] == ['show ${className}']
     }
 
     void 'a scaffolded class in a jar that is not a plugin is not a controller of the application'() {
