@@ -130,6 +130,9 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         then: 'the Point is rendered property by property, and a date or time still by its converter'
         parse(property.toString()) == [point: [x: 1, y: 2], duration: 'PT1H30M']
         parse(mapValue.toString()) == [point: [x: 1, y: 2]]
+
+        cleanup: 'release the directory, so that the temporary directory can be deleted on Windows too'
+        classLoader?.close()
     }
 
     void "g.render of a map writes date keys and values the same way as Spring Boot"() {
