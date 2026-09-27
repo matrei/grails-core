@@ -63,8 +63,8 @@ The effect most applications will notice: GORM for MongoDB does not flush before
 ----
 @Transactional
 void placeOrder(Order order) {
-    orderService.save(order)          // @Transactional: now joins placeOrder's transaction, unflushed
-    Order.countByCustomer(customer)   // does not see the order yet
+    orderService.save(order)                // @Transactional: now joins placeOrder's transaction, unflushed
+    Order.countByCustomer(order.customer)   // does not see the order yet
 }
 ----
 
