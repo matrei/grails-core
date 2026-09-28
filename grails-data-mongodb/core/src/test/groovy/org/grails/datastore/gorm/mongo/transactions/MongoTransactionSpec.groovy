@@ -122,6 +122,49 @@ class MongoTransactionSpec extends EmbeddedReplicaSetSpec {
         TxPerson.withNewSession { TxPerson.count() } == 1
     }
 
+    void "a query sees a write a joined transaction left queued, as on Hibernate"() {
+        when:
+        long counted = TxPerson.withTransaction {
+            TxPerson.withTransaction {
+                new TxPerson(name: "Fred").save()
+            }
+            TxPerson.count()
+        }
+
+        then: "the session was flushed ahead of the query, inside the server-side transaction"
+        counted == 1
+        names() == ["Fred"]
+    }
+
+    void "a write flushed ahead of a query is rolled back with the transaction"() {
+        given:
+        long counted = -1
+
+        when:
+        TxPerson.withTransaction {
+            new TxPerson(name: "Fred").save()
+            counted = TxPerson.count()
+            throw new RuntimeException("boom")
+        }
+
+        then:
+        thrown(RuntimeException)
+        counted == 1
+        names().empty
+    }
+
+    void "a query in a read-only transaction does not flush the session"() {
+        when:
+        long counted = TxPerson.withNewSession {
+            new TxPerson(name: "Queued").save()
+            TxPerson.withTransaction([readOnly: true]) { TxPerson.count() }
+        }
+
+        then: "a read-only transaction has no server-side transaction to take a flushed write back"
+        counted == 0
+        names().empty
+    }
+
     void "test a findOneAndDelete via the MongoEntity API participates in the transaction"() {
         given: "an existing committed document"
         TxPerson.withNewSession {

@@ -68,6 +68,25 @@ class MongoTransactionDisabledSpec extends EmbeddedReplicaSetSpec {
         LegacyThing.withNewSession { LegacyThing.count() } == 1
     }
 
+    void "a query in a transaction does not flush the session, so a rollback can still discard what is queued"() {
+        given:
+        long counted = -1
+
+        when:
+        LegacyThing.withTransaction {
+            LegacyThing.withTransaction {
+                new LegacyThing(name: "queued").save()
+            }
+            counted = LegacyThing.count()
+            throw new RuntimeException("boom")
+        }
+
+        then: "the query did not see the joined transaction's queued write, and the rollback discarded it"
+        thrown(RuntimeException)
+        counted == 0
+        names().empty
+    }
+
     void "a read-only transaction commits without flushing the surrounding session"() {
         when: "a read-only transaction commits while the session holds an unflushed write"
         int written = LegacyThing.withNewSession {
