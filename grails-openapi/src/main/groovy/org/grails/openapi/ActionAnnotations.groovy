@@ -125,8 +125,12 @@ class ActionAnnotations {
         if (controllerClass == null) {
             return
         }
-        Set<String> derivedSuccess = successCodes(operation.responses?.keySet())
-        repeatable(controllerClass, ApiResponseAnnotation).each { ApiResponseAnnotation declared ->
+        // A success status the controller declares for each of its actions is declared, not
+        // derived, whether or not the operation was derived with it too.
+        List<ApiResponseAnnotation> controllerResponses = repeatable(controllerClass, ApiResponseAnnotation)
+        Set<String> derivedSuccess = successCodes(operation.responses?.keySet()) -
+                successCodes(controllerResponses*.responseCode())
+        controllerResponses.each { ApiResponseAnnotation declared ->
             applyResponse(operation, declared, components, openapi31)
         }
         applySecurity(operation, repeatable(controllerClass, SecurityRequirementAnnotation))

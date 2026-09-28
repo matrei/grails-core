@@ -27,6 +27,7 @@ import grails.gorm.annotation.Entity
 import grails.rest.RestfulController
 
 import spock.lang.Specification
+import spock.lang.Unroll
 
 /**
  * The success statuses an action declares are the ones it answers with.
@@ -77,6 +78,23 @@ class DeclaredResponseSpec extends Specification {
         then:
         openApi.paths['/mirrors'].get.responses.keySet() == ['200', '203'] as Set
     }
+
+    @Unroll
+    void 'a success status an action declares keeps the one its controller declares at #path'() {
+        when: 'the controller declares the 200 an action would otherwise have derived'
+        OpenAPI openApi = OpenApiFixture.document([ForwarderController], []) {
+            post '/forwarding/direct'(controller: 'forwarder', action: 'direct')
+            post '/forwarding/operation'(controller: 'forwarder', action: 'operation')
+        }
+        Map responses = openApi.paths[path].post.responses
+
+        then: 'what the controller declares for each action is not taken for what was derived'
+        responses.keySet() == ['200', '202'] as Set
+        responses['200'].description == 'Completed synchronously'
+
+        where:
+        path << ['/forwarding/direct', '/forwarding/operation']
+    }
 }
 
 @Entity
@@ -116,4 +134,15 @@ class CourierController {
 class MirrorController {
 
     def index() { }
+}
+
+@ApiResponse(responseCode = '200', description = 'Completed synchronously')
+@Artefact('Controller')
+class ForwarderController {
+
+    @ApiResponse(responseCode = '202', description = 'Queued')
+    def direct() { }
+
+    @Operation(responses = [@ApiResponse(responseCode = '202', description = 'Queued')])
+    def operation() { }
 }
