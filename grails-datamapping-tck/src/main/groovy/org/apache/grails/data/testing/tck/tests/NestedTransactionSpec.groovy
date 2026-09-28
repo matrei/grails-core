@@ -112,8 +112,6 @@ class NestedTransactionSpec extends GrailsDataTckSpec {
         names() == ['inner']
     }
 
-    // The simple map datastore loses the new session's write (it did before joining changed, too)
-    @PendingFeatureIf({ Boolean.getBoolean('simple.gorm.suite') })
     void 'a transaction in a new session inside a transaction is its own, and commits its writes'() {
         when:
         Throwable failure = onFreshThread {
