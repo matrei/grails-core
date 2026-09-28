@@ -128,6 +128,21 @@ class JsonDateTimeRenderingSpec extends Specification {
         new JSON([value: Month.SEPTEMBER]).toString() == '{"value":"SEPTEMBER"}'
     }
 
+    void "a marshaller registered for java.sql.Time and Month renders them as Grails 7 and 8.0.0-RC1 did"() {
+        given: 'the marshallers the upgrade guide suggests'
+        DateTimeFormatter utc = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
+        JSON.registerObjectMarshaller(Time) { Time time ->
+            utc.format(Instant.ofEpochMilli(time.time))
+        }
+        JSON.registerObjectMarshaller(Month) { Month month ->
+            month.name()
+        }
+
+        expect:
+        new JSON([time: new Time(1759909726407L), month: Month.SEPTEMBER]).toString() ==
+                '{"time":"2025-10-08T07:48:46.407Z","month":"SEPTEMBER"}'
+    }
+
     void "with grails.converters.json.date set to javascript, Date values including java.sql.Time render as JavaScript dates"() {
         given: 'the default configuration from setup() replaced by a javascript one'
         ConvertersConfigurationHolder.clear()

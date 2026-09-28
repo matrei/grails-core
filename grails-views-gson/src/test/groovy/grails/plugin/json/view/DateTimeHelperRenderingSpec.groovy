@@ -135,6 +135,22 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         classLoader?.close()
     }
 
+    void "an application's converters for Month and java.sql.Time render them as Grails 7 did"() {
+        given: 'an engine that loads the converters the upgrade guide suggests, as ServiceLoader finds converters'
+        def services = new File(servicesDir, 'META-INF/services/groovy.json.JsonGenerator$Converter')
+        services.parentFile.mkdirs()
+        services.text = "${MonthNameJsonConverter.name}\n${SqlTimeAsDateJsonConverter.name}\n"
+        def classLoader = new URLClassLoader([servicesDir.toURI().toURL()] as URL[], DateTimeHelperRenderingSpec.classLoader)
+        def generator = new JsonViewTemplateEngine(new JsonViewConfiguration(), classLoader).generator
+        def time = new Time(1759909726407L)
+
+        expect:
+        generator.toJson([month: Month.SEPTEMBER, time: time]) == '{"month":"SEPTEMBER","time":"2025-10-08T07:48:46.407Z"}'
+
+        cleanup: 'release the directory, so that the temporary directory can be deleted on Windows too'
+        classLoader?.close()
+    }
+
     void "g.render of a map writes date keys and values the same way as Spring Boot"() {
         given:
         def map = [
@@ -247,6 +263,32 @@ class PointJsonConverter implements JsonGenerator.Converter {
     Object convert(Object value, String key) {
         Point point = (Point) value
         "${point.x},${point.y}".toString()
+    }
+}
+
+class MonthNameJsonConverter implements JsonGenerator.Converter {
+
+    @Override
+    boolean handles(Class<?> type) {
+        Month == type
+    }
+
+    @Override
+    Object convert(Object value, String key) {
+        ((Month) value).name()
+    }
+}
+
+class SqlTimeAsDateJsonConverter implements JsonGenerator.Converter {
+
+    @Override
+    boolean handles(Class<?> type) {
+        Time.isAssignableFrom(type)
+    }
+
+    @Override
+    Object convert(Object value, String key) {
+        new Date(((Time) value).time)
     }
 }
 
