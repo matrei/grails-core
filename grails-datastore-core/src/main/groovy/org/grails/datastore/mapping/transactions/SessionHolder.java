@@ -41,6 +41,7 @@ public class SessionHolder extends ResourceHolderSupport {
     private Object creator = null;
     // Synchronized to match the session deque, which is concurrent
     private final Set<Session> transactionSessions = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+    private final Set<Session> rollbackOnlySessions = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
 
     public SessionHolder(Session session) {
         sessions.add(session);
@@ -108,10 +109,42 @@ public class SessionHolder extends ResourceHolderSupport {
         }
     }
 
+    /**
+     * Marks the transaction in progress on the given session rollback-only, as a transaction that
+     * joined it and failed does. The mark belongs to that session's transaction alone: a transaction
+     * begun in a session bound on top of it, as {@code withNewSession} binds one, neither inherits it
+     * nor clears it when it completes. {@link #setRollbackOnly()} still marks the holder as a whole.
+     *
+     * @param session the session the transaction was begun on
+     */
+    public void setRollbackOnly(Session session) {
+        rollbackOnlySessions.add(session);
+    }
+
+    /**
+     * @param session the session the transaction was begun on
+     * @return whether the transaction in progress on the given session has been marked rollback-only
+     * with {@link #setRollbackOnly(Session)}
+     */
+    public boolean isRollbackOnly(Session session) {
+        return rollbackOnlySessions.contains(session);
+    }
+
+    /**
+     * Clears the mark {@link #setRollbackOnly(Session)} made, once the session's transaction has
+     * completed, so that the next transaction begun on the session does not inherit it.
+     *
+     * @param session the session the transaction was begun on
+     */
+    public void resetRollbackOnly(Session session) {
+        rollbackOnlySessions.remove(session);
+    }
+
     @Override
     public void clear() {
         super.clear();
         transactionSessions.clear();
+        rollbackOnlySessions.clear();
     }
 
     public Session getSession() {

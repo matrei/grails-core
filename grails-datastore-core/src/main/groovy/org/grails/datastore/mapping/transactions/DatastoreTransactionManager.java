@@ -206,7 +206,7 @@ public class DatastoreTransactionManager extends AbstractPlatformTransactionMana
     @Override
     protected void doCommit(DefaultTransactionStatus status) throws TransactionException {
         TransactionObject txObject = (TransactionObject) status.getTransaction();
-        Session session = transactionSession(txObject);
+        Session session = txObject.getTransactionSession();
         Transaction<?> transaction = txObject.getTransaction();
         try {
             if (transaction == null) {
@@ -249,7 +249,7 @@ public class DatastoreTransactionManager extends AbstractPlatformTransactionMana
     @Override
     protected void doRollback(DefaultTransactionStatus status) throws TransactionException {
         TransactionObject txObject = (TransactionObject) status.getTransaction();
-        Session session = transactionSession(txObject);
+        Session session = txObject.getTransactionSession();
         try {
             // Unlike a commit, a rollback of a transaction that has already ended has nothing to undo. It
             // happens after a failed commit, which ends the transaction first, and throwing here would
@@ -279,11 +279,14 @@ public class DatastoreTransactionManager extends AbstractPlatformTransactionMana
     protected void doSetRollbackOnly(DefaultTransactionStatus status) throws TransactionException {
         TransactionObject txObject = (TransactionObject) status.getTransaction();
         status.setRollbackOnly();
-        txObject.getSessionHolder().setRollbackOnly();
+        // The mark goes on the session whose transaction this one joined, not on the holder: a
+        // transaction begun in a session bound on top of it is its own, and must neither inherit the
+        // mark nor clear it when it completes.
+        Session session = txObject.getTransactionSession();
+        txObject.getSessionHolder().setRollbackOnly(session);
         // A joined transaction failed, so the whole transaction will roll back. Discard what is queued
         // now: flushed explicitly before then, it would be written, and without a server-side
         // transaction nothing could take it back.
-        Session session = txObject.getSessionHolder().getSession();
         if (session != null) {
             session.clear();
         }
@@ -298,26 +301,16 @@ public class DatastoreTransactionManager extends AbstractPlatformTransactionMana
         txObject.getSessionHolder().setTransactionActive(txObject.getTransactionSession(), false);
     }
 
-    /**
-     * The session the transaction began on, which its commit flushes and its rollback clears, even if
-     * another has been bound on top of it since; the holder's current session for a transaction begun
-     * by a subclass that does not record one.
-     */
-    private static Session transactionSession(TransactionObject txObject) {
-        Session session = txObject.getTransactionSession();
-        return session != null ? session : txObject.getSessionHolder().getSession();
-    }
-
     @Override
     protected void doCleanupAfterCompletion(Object transaction) {
         TransactionObject txObject = (TransactionObject) transaction;
         SessionHolder sessionHolder = txObject.getSessionHolder();
+        Session session = txObject.getTransactionSession();
 
         ended(txObject);
-        // A joined transaction that failed marked the holder rollback-only. A pre-bound holder outlives
-        // this transaction, and the next one begun on it must not inherit that mark.
-        sessionHolder.resetRollbackOnly();
-        Session session = transactionSession(txObject);
+        // A joined transaction that failed marked this transaction's session rollback-only. A pre-bound
+        // session outlives this transaction, and the next one begun on it must not inherit that mark.
+        sessionHolder.resetRollbackOnly(session);
         if (session != null && txObject.getPreviousFlushMode() != null) {
             session.setFlushMode(txObject.getPreviousFlushMode());
         }

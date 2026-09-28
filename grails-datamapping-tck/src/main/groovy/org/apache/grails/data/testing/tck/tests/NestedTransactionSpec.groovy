@@ -133,6 +133,35 @@ class NestedTransactionSpec extends GrailsDataTckSpec {
         names() == ['A', 'B', 'C']
     }
 
+    // Neo4j commits the writes made after the caught failure, as in the feature above that catches one
+    @PendingFeatureIf({ Boolean.getBoolean('neo4j.gorm.suite') })
+    void 'a transaction in a new session, run after a joined transaction failed, commits its writes and the outer one still rolls back'() {
+        when:
+        Throwable failure = onFreshThread {
+            TestEntity.withTransaction {
+                entity('A').save()
+                try {
+                    TestEntity.withTransaction {
+                        entity('B').save()
+                        throw new IllegalStateException('inner')
+                    }
+                }
+                catch (IllegalStateException ignored) {
+                }
+                TestEntity.withNewSession {
+                    TestEntity.withTransaction {
+                        entity('audit').save()
+                    }
+                }
+                entity('C').save()
+            }
+        }
+
+        then: 'the failure is recorded in a transaction of its own, which neither inherits nor clears the outer one\'s rollback-only mark'
+        failure == null
+        names() == ['audit']
+    }
+
     private static TestEntity entity(String name) {
         new TestEntity(name: name, age: 30, child: new ChildEntity(name: "${name} child"))
     }

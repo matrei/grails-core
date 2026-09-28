@@ -35,7 +35,9 @@ import org.springframework.transaction.support.TransactionTemplate
 import spock.lang.Specification
 
 import org.grails.datastore.mapping.core.Datastore
+import org.grails.datastore.mapping.core.DatastoreUtils
 import org.grails.datastore.mapping.core.Session
+import org.grails.datastore.mapping.core.VoidSessionCallback
 
 /**
  * Drives {@link DatastoreTransactionManager} through {@link TransactionTemplate}, the way GORM's
@@ -383,6 +385,38 @@ class DatastoreTransactionManagerSpec extends Specification {
 
         then: "it commits"
         1 * transaction.commit()
+    }
+
+    void "a transaction in a new session, run after a joined transaction failed, commits on its own and leaves the outer one rollback-only"() {
+        given:
+        Session newSession = Mock(Session)
+        Transaction newTransaction = Mock(Transaction)
+        newSession.getDatastore() >> datastore
+        newSession.beginTransaction(_ as TransactionDefinition) >> newTransaction
+        newTransaction.isActive() >> true
+
+        when: "the outer transaction catches a joined one's failure, then runs a transaction in a new session, as withNewSession does"
+        new TransactionTemplate(transactionManager).execute {
+            try {
+                new TransactionTemplate(transactionManager).execute { throw new IllegalStateException('inner') }
+            }
+            catch (IllegalStateException ignored) {
+            }
+            DatastoreUtils.executeWithNewSession(datastore, { Session s ->
+                new TransactionTemplate(transactionManager).execute {}
+            } as VoidSessionCallback)
+        }
+
+        then: "the new session's transaction did not inherit the outer one's mark, and committed"
+        2 * datastore.connect() >>> [session, newSession]
+        1 * newSession.flush()
+        1 * newTransaction.commit()
+        0 * newTransaction.rollback()
+
+        and: "its completion did not clear the outer one's mark, so the outer commit is refused"
+        thrown(UnexpectedRollbackException)
+        0 * transaction.commit()
+        1 * transaction.rollback()
     }
 
     void "commit flushes, and rollback clears, the session the transaction began on, not one bound on top of it"() {

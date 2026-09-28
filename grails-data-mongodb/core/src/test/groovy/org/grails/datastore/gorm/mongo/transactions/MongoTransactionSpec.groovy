@@ -323,6 +323,54 @@ class MongoTransactionSpec extends EmbeddedReplicaSetSpec {
         names() == ["A", "B", "C"]
     }
 
+    void "a transaction in a new session, run after a joined transaction failed, commits its writes and the outer one still rolls back"() {
+        when:
+        TxPerson.withTransaction {
+            new TxPerson(name: "A").save(flush: true)
+            try {
+                TxPerson.withTransaction {
+                    new TxPerson(name: "B").save(flush: true)
+                    throw new IllegalStateException("inner")
+                }
+            }
+            catch (IllegalStateException ignored) {
+            }
+            TxPerson.withNewSession {
+                TxPerson.withTransaction {
+                    new TxPerson(name: "audit").save(flush: true)
+                }
+            }
+            new TxPerson(name: "C").save(flush: true)
+        }
+
+        then:
+        noExceptionThrown()
+        names() == ["audit"]
+    }
+
+    void "the same, driven by Spring's TransactionTemplate, commits the new session's transaction and reports the outer rollback"() {
+        given:
+        TransactionTemplate template = new TransactionTemplate(datastore.transactionManager)
+
+        when:
+        template.execute {
+            new TxPerson(name: "A").save(flush: true)
+            try {
+                template.execute { throw new IllegalStateException("inner") }
+            }
+            catch (IllegalStateException ignored) {
+            }
+            TxPerson.withNewSession {
+                template.execute { new TxPerson(name: "audit").save(flush: true) }
+            }
+            new TxPerson(name: "C").save(flush: true)
+        }
+
+        then:
+        thrown(UnexpectedRollbackException)
+        names() == ["audit"]
+    }
+
     void "transactional code run after a commit commits its own writes"() {
         when:
         TxPerson.withTransaction {

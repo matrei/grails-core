@@ -64,8 +64,17 @@ public class TransactionObject implements SmartTransactionObject {
         this.transaction = transaction;
     }
 
+    /**
+     * The session the transaction began on, which its commit flushes, its rollback clears and its
+     * rollback-only mark belongs to, even if another has been bound on top of it since. For a
+     * transaction that joined another, the holder's current session, which is the one it joined; the
+     * same for a transaction begun by a subclass that does not record its session.
+     */
     Session getTransactionSession() {
-        return transactionSession;
+        if (transactionSession != null) {
+            return transactionSession;
+        }
+        return sessionHolder != null ? sessionHolder.getSession() : null;
     }
 
     void setTransactionSession(Session transactionSession) {
@@ -118,7 +127,7 @@ public class TransactionObject implements SmartTransactionObject {
 
     @Override
     public boolean isRollbackOnly() {
-        return sessionHolder != null && sessionHolder.isRollbackOnly();
+        return sessionHolder != null && sessionHolder.isRollbackOnly(getTransactionSession());
     }
 
     @Override
