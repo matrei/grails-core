@@ -500,7 +500,10 @@ Longer term, consider migrating to the fluent `HttpSecurity` API for filter chai
 ==== 14. Spring Dependency Management Plugin Replaced by Gradle Platforms
 
 Grails 8 standardizes on Gradle's native `platform()` dependency management and **no longer applies the `io.spring.dependency-management` plugin**.
-The Grails Gradle Plugin now adds `grails-bom` as a Gradle `platform()` on every declarable project configuration, and a new bundled plugin (`org.apache.grails.gradle.bom-property-overrides`, applied automatically by the Grails Gradle Plugin) preserves the property-based version-override workflow that Spring DM provided.
+The Grails Gradle Plugin now contributes `grails-bom` as a Gradle `platform()` to eligible declarable project configurations, and a new bundled plugin (`org.apache.grails.gradle.bom-property-overrides`, applied automatically by the Grails Gradle Plugin) preserves the property-based version-override workflow that Spring DM provided.
+The platform is contributed lazily, when a configuration's dependencies are observed (through resolution, publication, or `incoming.dependencies`), so configurations populated on demand through `defaultDependencies`, such as the Grails `profile` configuration, keep their defaults.
+Dedicated tool and annotation-processor classpaths, including the `jacoco` plugin's `jacocoAgent` and `jacocoAnt` configurations, are excluded from automatic platform application so the application BOM does not change their transitive dependency versions.
+Until dependencies are observed, the auto-applied platform is not visible in a configuration's declared `dependencies` or `allDependencies`; build logic that looks for it should inspect `incoming.dependencies` or the resolution result instead.
 
 **No action is required for most applications.**
 The standard `gradle.properties` and `ext['…']` override forms continue to work exactly as before:
