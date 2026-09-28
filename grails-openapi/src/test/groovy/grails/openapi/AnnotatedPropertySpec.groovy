@@ -20,7 +20,9 @@ package grails.openapi
 
 import groovy.json.JsonSlurper
 
+import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema as SchemaAnnotation
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 
 import grails.artefact.Artefact
 import grails.rest.RestfulController
@@ -72,6 +74,45 @@ class AnnotatedPropertySpec extends Specification {
         version << ['openapi_3_0', 'openapi_3_1']
     }
 
+    void 'writes the type a property @Schema declares in an OpenAPI 3.1 document'() {
+        when: 'a class that is neither a domain class nor a Validateable, as a response names'
+        Map properties = written('openapi_3_1', [BalanceController]) {
+            '/balance'(controller: 'balance', action: 'show')
+        }.components.schemas['Money'].get('properties')
+
+        then: 'the declared type is written, as the declared types are'
+        properties.bare == [type: 'number']
+        properties.typed == [type: 'number', format: 'double']
+        properties.typedLong == [type: 'integer', format: 'int64']
+        properties.types31 == [type: 'number', format: 'double']
+    }
+
+    void 'writes the type a property @Schema declares with the null it can be in an OpenAPI 3.1 document'() {
+        when:
+        Map schemas = written('openapi_3_1', [InventorySummaryController, ReservationController]) {
+            '/inventory'(resources: 'inventorySummary')
+            '/reservations'(resources: 'reservation')
+        }.components.schemas
+
+        then: 'the null the annotation allows'
+        schemas['InventorySummary'].get('properties').price == [type: ['number', 'null'], format: 'double']
+        schemas['InventorySummary'].get('properties').stateAbbreviation == [type: ['string', 'null'], maxLength: 2]
+
+        and: 'the null the constraint allows'
+        schemas['Reservation'].get('properties').seats == [type: ['integer', 'null'], format: 'int32']
+    }
+
+    void 'writes the type a property @Schema declares in an OpenAPI 3.0 document'() {
+        when:
+        Map properties = written('openapi_3_0', [BalanceController]) {
+            '/balance'(controller: 'balance', action: 'show')
+        }.components.schemas['Money'].get('properties')
+
+        then:
+        properties.typed == [type: 'number', format: 'double']
+        properties.typedLong == [type: 'integer', format: 'int64']
+    }
+
     private static Map written(String version, List<Class<?>> controllers, Closure mappings) {
         def openApi = OpenApiFixture.document(['springdoc.api-docs.version': version], controllers, [], mappings)
         (Map) new JsonSlurper().parseText(GrailsOpenApiGenerator.serialize(openApi, 'json'))
@@ -113,14 +154,39 @@ class ReservationCommand implements Validateable {
 
     String note
 
+    @SchemaAnnotation(type = 'integer', format = 'int32')
+    Long seats
+
     static constraints = {
         code nullable: true
         guest nullable: false
         note nullable: true
+        seats nullable: true
     }
 }
 
 @Artefact('Controller')
 class ReservationController extends RestfulController<ReservationCommand> {
     ReservationController() { super(ReservationCommand) }
+}
+
+class Money {
+
+    BigDecimal bare
+
+    @SchemaAnnotation(type = 'number', format = 'double')
+    BigDecimal typed
+
+    @SchemaAnnotation(type = 'integer', format = 'int64')
+    Long typedLong
+
+    @SchemaAnnotation(types = ['number'], format = 'double')
+    BigDecimal types31
+}
+
+@Artefact('Controller')
+class BalanceController {
+
+    @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = Money)))
+    def show() { }
 }

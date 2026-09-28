@@ -407,7 +407,9 @@ class GrailsModelConverter implements ModelConverter {
         PropertyNames propertyNames = PropertyNames.of(type)
         if (entity == null && !validateable && !declaresBindableProperties(type)) {
             // Grails renders it by the names of its properties, and declares nothing else of it.
-            declareReferenceSiblings(model, propertyNames.applyTo(model), propertyNames)
+            Map<String, String> names = propertyNames.applyTo(model)
+            declareReferenceSiblings(model, names, propertyNames)
+            declareTypes(model, names, propertyNames)
             return
         }
 
@@ -424,6 +426,7 @@ class GrailsModelConverter implements ModelConverter {
 
         Map<String, String> names = propertyNames.applyTo(model)
         declareReferenceSiblings(model, names, propertyNames)
+        declareTypes(model, names, propertyNames)
         if (model.xml == null) {
             // Grails renders a type in XML as an element named for its class.
             model.setXml(new XML().name(GrailsNameUtils.getPropertyName(type)))
@@ -568,6 +571,30 @@ class GrailsModelConverter implements ModelConverter {
             if (writeOnly) {
                 property.setWriteOnly(true)
             }
+        }
+    }
+
+    /**
+     * swagger-core leaves the type a property's {@code @Schema} declares out of the types of an
+     * OpenAPI 3.1 schema, which a 3.1 document is written from, so the property would be written with
+     * another type, such as a string for a number. The declared type is written, with the null the
+     * annotation allows, before the constraints add to it. One declared with {@code types} is
+     * written as it is.
+     */
+    private static void declareTypes(Schema model, Map<String, String> names, PropertyNames propertyNames) {
+        if (model.specVersion != SpecVersion.V31 || !model.properties) {
+            return
+        }
+        ((Map<String, Schema>) model.properties).each { String described, Schema property ->
+            SchemaAnnotation declared = propertyNames.declaredSchema(propertyNamed(names, described))
+            if (!declared?.type() || declared.types() || property.$ref) {
+                return
+            }
+            Set<String> types = new LinkedHashSet<String>([declared.type()])
+            if (property.types?.contains(NULL_TYPE)) {
+                types << NULL_TYPE
+            }
+            property.setTypes(types)
         }
     }
 
