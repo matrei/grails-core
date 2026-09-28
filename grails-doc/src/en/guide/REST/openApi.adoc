@@ -464,6 +464,13 @@ The constraints are carried across as follows:
 | `email` / `url` | `format`
 |===
 
+Where the annotation and the constraints both say whether a property must be sent, the property's
+`@Schema` wins: a property it declares `nullable = true` or
+`requiredMode = NOT_REQUIRED` is not listed in `required`, and one it declares
+`requiredMode = REQUIRED` is, whatever it is constrained to. So a `Validateable` class that declares
+no constraints, whose every property Grails constrains `nullable: false` by default, still describes
+the properties it annotates as optional that way.
+
 A domain class is described as Grails renders it: its identifier and its persistent properties. A
 transient, or a getter with nothing persisted behind it, is not rendered and is not described. The
 version is not rendered either unless it is configured to be, and is described only then: in JSON

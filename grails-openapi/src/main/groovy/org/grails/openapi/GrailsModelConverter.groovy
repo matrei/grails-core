@@ -33,6 +33,7 @@ import io.swagger.v3.core.converter.ModelConverters
 import io.swagger.v3.core.util.PrimitiveType
 import io.swagger.v3.oas.annotations.media.Schema as SchemaAnnotation
 import io.swagger.v3.oas.annotations.media.Schema.AccessMode
+import io.swagger.v3.oas.annotations.media.Schema.RequiredMode
 import io.swagger.v3.oas.models.SpecVersion
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.ComposedSchema
@@ -435,7 +436,7 @@ class GrailsModelConverter implements ModelConverter {
         readOnly.each { String name -> describable(model, names[name] ?: name)?.setReadOnly(true) }
         describeCollectionsInXml(type, model, names, entity)
         applyConstraints(model, constraints.findAll { String name, Constrained constrained -> !(name in readOnly) },
-                versionName, names)
+                versionName, names, propertyNames)
         if (bindable != null) {
             markUnbound(model, names, bindable, beanProperties)
         }
@@ -654,8 +655,13 @@ class GrailsModelConverter implements ModelConverter {
         declared ?: Collections.<String, Constrained> emptyMap()
     }
 
+    /**
+     * A property constrained not to be null is required, unless its {@code @Schema} says it need not
+     * be sent. The annotation is the application's own statement about the property, where the
+     * constraint is often only the {@code nullable: false} Grails gives every property by default.
+     */
     private static void applyConstraints(Schema model, Map<String, Constrained> constraints, String versionName,
-                                         Map<String, String> names) {
+                                         Map<String, String> names, PropertyNames propertyNames) {
         constraints.each { String name, Constrained constrained ->
             Schema property = property(model, names, name)
             if (property == null) {
@@ -671,10 +677,21 @@ class GrailsModelConverter implements ModelConverter {
                     describable(model, described).setNullable(true)
                 }
             }
-            if (!constrained.nullable && name != versionName && !model.required?.contains(described)) {
+            if (!constrained.nullable && name != versionName && !model.required?.contains(described)
+                    && !declaresOptional(propertyNames.declaredSchema(name))) {
                 model.addRequiredItem(described)
             }
         }
+    }
+
+    /**
+     * Whether a property's {@code @Schema} says it need not be sent: it declares the property
+     * nullable or not required, and does not also declare it required. A property it declares
+     * required swagger-core has already listed in {@code required}.
+     */
+    private static boolean declaresOptional(SchemaAnnotation declared) {
+        declared != null && declared.requiredMode() != RequiredMode.REQUIRED && !declared.required()
+                && (declared.nullable() || declared.requiredMode() == RequiredMode.NOT_REQUIRED)
     }
 
     /**
