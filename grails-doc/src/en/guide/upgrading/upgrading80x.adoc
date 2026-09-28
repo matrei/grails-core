@@ -4209,10 +4209,6 @@ Review these where an application or its clients read them:
 | `"2025-10-08T07:48:46.407Z"`, the UTC instant, which does not bind back to a `java.sql.Time`
 | `"01:48:46"`, from `Time#toString()` in the JVM default time zone, which binds back to the same `java.sql.Time`
 
-| `java.time.Month`
-| `grails.converters.JSON`: `{"enumType":"java.time.Month","name":"SEPTEMBER"}`; JSON views: `"SEPTEMBER"`
-| `9`, a JSON number from 1 (January) to 12 (December)
-
 | A `Date`, `Calendar`, `java.sql` date type or `ZonedDateTime` map key
 | the key's `toString()`, such as `"Wed Oct 08 01:48:46 MDT 2025"`
 | a `Date` (a `java.sql.Time` too) or `Calendar` key as a `Date` value is written, such as
@@ -4231,9 +4227,8 @@ Review these where an application or its clients read them:
 | `2025-10-08T01:48:46.407-06:00`, an ISO-8601 date and time with the offset of the JVM default time zone
 |===
 
-Data binding binds a `Month` from its number, and still from its name, so JSON that Grails renders binds back: `9`,
-`"9"` and `"SEPTEMBER"` bind to `SEPTEMBER`. Grails 7 bound a number through Spring's conversion service by ordinal, so
-`9` bound to `OCTOBER`.
+Data binding binds a `Month` from its number as well as its name, as Spring Boot reads it: `9`, `"9"` and `"SEPTEMBER"`
+bind to `SEPTEMBER`. Grails 7 bound a number through Spring's conversion service by ordinal, so `9` bound to `OCTOBER`.
 
 JSON views write `Date` and `Calendar` map keys with `grails.views.json.generator.dateFormat`, in the configured
 `timeZone` and `locale`, as they write those values. As with Spring Boot's `spring.jackson.date-format`, the date format
@@ -4302,9 +4297,6 @@ DateTimeFormatter utc = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z
 JSON.registerObjectMarshaller(java.sql.Time) { java.sql.Time time ->
     utc.format(Instant.ofEpochMilli(time.time))
 }
-JSON.registerObjectMarshaller(Month) { Month month ->
-    month.name()
-}
 ----
 
 A JSON views converter that returns `new Date(time.time)` for a `java.sql.Time` writes it with the configured
@@ -4319,9 +4311,12 @@ of the defaults. A marshaller registered for `Date` or `Calendar`, like `grails.
 `javascript`, changes how those values render with `grails.converters.JSON`, but not map keys of those types, which
 keep the form in the table above. JSON views format date map keys with `dateFormat`, as described above.
 
-NOTE: Enums other than `Month` still render by `name()`, as described in section 8, Enum Serialization Default Changed,
-while Jackson 3 writes an enum's `toString()`. The two differ only for enums that override `toString()`, such as
-`java.time.temporal.ChronoUnit` (`"SECONDS"` in Grails, `"Seconds"` in Spring Boot).
+NOTE: Enums render by `name()`, as described in section 8, Enum Serialization Default Changed, while Jackson 3 writes an
+enum's `toString()`, and a `java.time.Month` as its number. The two differ for `Month` (`"SEPTEMBER"` in Grails, `9` in
+Spring Boot) and for enums that override `toString()`, such as `java.time.temporal.ChronoUnit` (`"SECONDS"` in Grails,
+`"Seconds"` in Spring Boot). To render a `Month` as its number, register
+`JSON.registerObjectMarshaller(Month) { Month month -> month.value }` and a JSON views converter that returns
+`month.value`.
 
 NOTE: An `OffsetTime` keeps its seconds and writes a fraction of a second with only the digits it needs, such as
 `"03:00:00-03:00"`, as JSON views have written it since Grails 7, where Spring Boot writes `"03:00-03:00"`. JSON views

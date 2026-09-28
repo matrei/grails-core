@@ -290,7 +290,7 @@ json {
         result.jsonText == jackson.writeValueAsString([value: value])
 
         where:
-        value << DateTimeValues.all().findAll { !DateTimeValues.offsetTimeDiffers(it) && !outsideFourDigitYears(it) }
+        value << DateTimeValues.all().findAll { !DateTimeValues.differsFromSpringBoot(it) && !outsideFourDigitYears(it) }
         description = value instanceof Map ? "${value.keySet().first().class.simpleName} map key" : value.class.simpleName
     }
 

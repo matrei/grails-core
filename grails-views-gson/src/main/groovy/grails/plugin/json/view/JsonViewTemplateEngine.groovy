@@ -21,7 +21,6 @@ package grails.plugin.json.view
 
 import java.sql.Time
 import java.time.Duration
-import java.time.Month
 import java.time.MonthDay
 import java.time.Year
 import java.time.YearMonth
@@ -128,7 +127,6 @@ class JsonViewTemplateEngine extends ResolvableGroovyTemplateEngine {
         converters.add(new SimpleTypeJsonConverter<>(Year, Year::getValue))
         converters.add(new SimpleTypeJsonConverter<>(YearMonth, YearMonth::toString))
         converters.add(new SimpleTypeJsonConverter<>(MonthDay, MonthDay::toString))
-        converters.add(new SimpleTypeJsonConverter<>(Month, Month::getValue))
         converters.add(new SimpleTypeJsonConverter<>(Duration, Duration::toString))
         converters.add(new SimpleTypeJsonConverter<>(ZoneId, ZoneId::getId))
         converters.add(new SimpleTypeJsonConverter<>(TimeZone, TimeZone::getID))

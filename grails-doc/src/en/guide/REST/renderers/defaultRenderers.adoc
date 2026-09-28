@@ -102,8 +102,8 @@ application and a Spring Boot application return the same JSON for the same valu
 | `YearMonth`, `MonthDay`, `Duration`, `Period`, `javax.xml.datatype.Duration`
 | ISO-8601, such as `"2026-09"`, `"--09-25"`, `"PT1H30M"`, `"P1Y2M3D"`, `"P1DT2H"`
 
-| `Year`, `Month`
-| a number, such as `2026`, or `9` for September
+| `Year`
+| a number, such as `2026`
 
 | `ZoneId`, `ZoneOffset`, `TimeZone`
 | the ID, such as `"America/Sao_Paulo"` or `"-03:00"`
@@ -113,15 +113,18 @@ An `OffsetTime` keeps its seconds and writes a fraction of a second with only th
 it, where Spring Boot writes `"03:00-03:00"`. A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its
 keys as those values render by default, such as
 `"2025-10-08T07:48:46.407Z"`, also where `grails.converters.json.date` or a registered marshaller changes how the values
-render; other map keys render with their `toString()`. JSON views render dates and times the same way, and data binding
-binds a `Month` back from its number.
+render; other map keys render with their `toString()`. JSON views render dates and times the same way.
+
+A `Month` renders by its name, such as `"SEPTEMBER"`, as every enum does, where Spring Boot writes its number. Data binding
+binds a `Month` from either.
 
 Setting `grails.converters.json.date` to `javascript` renders `java.util.Date` values as JavaScript `new Date(...)`
-constructors instead. To render a type differently, register an object marshaller for it, for example in `BootStrap.init`:
+constructors instead. To render a type differently, register an object marshaller for it, for example in `BootStrap.init`.
+This one renders a `Month` as its number, as Spring Boot does:
 
 [source,groovy]
 ----
 JSON.registerObjectMarshaller(Month) { Month month ->
-    month.name()
+    month.value
 }
 ----

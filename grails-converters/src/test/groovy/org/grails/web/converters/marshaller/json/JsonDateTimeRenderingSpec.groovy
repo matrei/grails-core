@@ -96,7 +96,7 @@ class JsonDateTimeRenderingSpec extends Specification {
         Year.of(2026)                                                    || '2026'
         YearMonth.of(2026, 9)                                            || '"2026-09"'
         MonthDay.of(9, 25)                                               || '"--09-25"'
-        Month.SEPTEMBER                                                  || '9'
+        Month.SEPTEMBER                                                  || '"SEPTEMBER"'
         DayOfWeek.FRIDAY                                                 || '"FRIDAY"'
         Duration.ofMinutes(90).plusMillis(250)                           || '"PT1H30M0.25S"'
         Period.of(1, 2, 3)                                               || '"P1Y2M3D"'
@@ -114,33 +114,29 @@ class JsonDateTimeRenderingSpec extends Specification {
         new JSON(map).toString() == jackson.writeValueAsString(map)
 
         where:
-        value << DateTimeValues.all().findAll { !DateTimeValues.offsetTimeDiffers(it) }
+        value << DateTimeValues.all().findAll { !DateTimeValues.differsFromSpringBoot(it) }
         description = value instanceof Map ? "${value.keySet().first().class.simpleName} map key" : value.class.simpleName
     }
 
-    void "a registered object marshaller overrides the rendering of a date type"() {
-        given:
+    void "a marshaller registered for Month renders it as its number, as Spring Boot does"() {
+        given: 'the marshaller the upgrade guide suggests'
         JSON.registerObjectMarshaller(Month) { Month month ->
-            month.name()
+            month.value
         }
 
         expect:
-        new JSON([value: Month.SEPTEMBER]).toString() == '{"value":"SEPTEMBER"}'
+        new JSON([value: Month.SEPTEMBER]).toString() == '{"value":9}'
     }
 
-    void "a marshaller registered for java.sql.Time and Month renders them as Grails 7 and 8.0.0-RC1 did"() {
-        given: 'the marshallers the upgrade guide suggests'
+    void "a marshaller registered for java.sql.Time renders it as Grails 7 did"() {
+        given: 'the marshaller the upgrade guide suggests'
         DateTimeFormatter utc = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
         JSON.registerObjectMarshaller(Time) { Time time ->
             utc.format(Instant.ofEpochMilli(time.time))
         }
-        JSON.registerObjectMarshaller(Month) { Month month ->
-            month.name()
-        }
 
         expect:
-        new JSON([time: new Time(1759909726407L), month: Month.SEPTEMBER]).toString() ==
-                '{"time":"2025-10-08T07:48:46.407Z","month":"SEPTEMBER"}'
+        new JSON([time: new Time(1759909726407L)]).toString() == '{"time":"2025-10-08T07:48:46.407Z"}'
     }
 
     void "with grails.converters.json.date set to javascript, Date values including java.sql.Time render as JavaScript dates"() {
@@ -152,7 +148,7 @@ class JsonDateTimeRenderingSpec extends Specification {
 
         expect: 'other date and time types render as they do by default'
         new JSON([date: new Date(0L), time: new Time(0L), month: Month.MAY, calendar: calendar('1970-01-01T00:00Z[UTC]')]).toString() ==
-                '{"date":new Date(0),"time":new Date(0),"month":5,"calendar":"1970-01-01T00:00:00.000Z"}'
+                '{"date":new Date(0),"time":new Date(0),"month":"MAY","calendar":"1970-01-01T00:00:00.000Z"}'
     }
 
     void "the JSON builder writes date map keys the same way as Spring Boot"() {

@@ -63,7 +63,7 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
     @TempDir
     File servicesDir
 
-    void "g.render of a domain instance writes a Month property as its number"() {
+    void "g.render of a domain instance writes a Month property by its name, as every enum"() {
         given:
         mappingContext.addPersistentEntity(MonthEntity)
 
@@ -76,14 +76,14 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         ''', [object: new MonthEntity(name: 'Fred', month: Month.SEPTEMBER)])
 
         then:
-        result.json.month == 9
+        result.json.month == 'SEPTEMBER'
         result.json.name == 'Fred'
     }
 
     void "g.render of a POGO writes its date and time properties the same way as Spring Boot"() {
         given:
         def pogo = new DateTimeHolder(
-                year: Year.of(2026), yearMonth: YearMonth.of(2026, 9), monthDay: MonthDay.of(9, 25), month: Month.SEPTEMBER,
+                year: Year.of(2026), yearMonth: YearMonth.of(2026, 9), monthDay: MonthDay.of(9, 25),
                 duration: Duration.ofMinutes(90), period: Period.of(1, 2, 3), zoneId: ZoneId.of('America/Sao_Paulo'),
                 zoneOffset: ZoneOffset.ofHours(-3), timeZone: TimeZone.getTimeZone('America/Sao_Paulo'),
                 xmlCalendar: DatatypeFactory.newInstance().newXMLGregorianCalendar('2025-10-08T01:48:46.407-06:00'),
@@ -135,17 +135,30 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         classLoader?.close()
     }
 
-    void "an application's converters for Month and java.sql.Time render them as Grails 7 did"() {
+    void "an application's converters render Month as its number, as Spring Boot does, and java.sql.Time as Grails 7 did"() {
         given: 'an engine that loads the converters the upgrade guide suggests, as ServiceLoader finds converters'
         def services = new File(servicesDir, 'META-INF/services/groovy.json.JsonGenerator$Converter')
         services.parentFile.mkdirs()
-        services.text = "${MonthNameJsonConverter.name}\n${SqlTimeAsDateJsonConverter.name}\n"
+        services.text = "${MonthNumberJsonConverter.name}\n${SqlTimeAsDateJsonConverter.name}\n"
         def classLoader = new URLClassLoader([servicesDir.toURI().toURL()] as URL[], DateTimeHelperRenderingSpec.classLoader)
-        def generator = new JsonViewTemplateEngine(new JsonViewConfiguration(), classLoader).generator
-        def time = new Time(1759909726407L)
+        def engine = new JsonViewTemplateEngine(new JsonViewConfiguration(), classLoader)
+        engine.mappingContext = mappingContext
+        mappingContext.addPersistentEntity(MonthEntity)
+        def template = engine.createTemplate('''
+            model {
+                Object object
+            }
+            json g.render(object)
+        ''')
+        def domain = new StringWriter()
 
-        expect:
-        generator.toJson([month: Month.SEPTEMBER, time: time]) == '{"month":"SEPTEMBER","time":"2025-10-08T07:48:46.407Z"}'
+        when:
+        template.make(object: new MonthEntity(name: 'Fred', month: Month.SEPTEMBER)).writeTo(domain)
+
+        then: 'the converters apply to values, and to a domain property that g.render writes'
+        engine.generator.toJson([month: Month.SEPTEMBER, time: new Time(1759909726407L)]) ==
+                '{"month":9,"time":"2025-10-08T07:48:46.407Z"}'
+        parse(domain.toString()).month == 9
 
         cleanup: 'release the directory, so that the temporary directory can be deleted on Windows too'
         classLoader?.close()
@@ -228,7 +241,6 @@ class DateTimeHolder {
     Year year
     YearMonth yearMonth
     MonthDay monthDay
-    Month month
     Duration duration
     Period period
     ZoneId zoneId
@@ -266,7 +278,7 @@ class PointJsonConverter implements JsonGenerator.Converter {
     }
 }
 
-class MonthNameJsonConverter implements JsonGenerator.Converter {
+class MonthNumberJsonConverter implements JsonGenerator.Converter {
 
     @Override
     boolean handles(Class<?> type) {
@@ -275,7 +287,7 @@ class MonthNameJsonConverter implements JsonGenerator.Converter {
 
     @Override
     Object convert(Object value, String key) {
-        ((Month) value).name()
+        ((Month) value).value
     }
 }
 

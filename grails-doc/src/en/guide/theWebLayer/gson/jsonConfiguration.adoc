@@ -134,15 +134,16 @@ JSON views render date and time values the same way as Spring Boot's default Jac
 | `YearMonth`, `MonthDay`, `Duration`, `Period`, `javax.xml.datatype.Duration`
 | ISO-8601, such as `"2026-09"`, `"--09-25"`, `"PT1H30M"`, `"P1Y2M3D"`, `"P1DT2H"`
 
-| `Year`, `Month`
-| a number, such as `2026`, or `9` for September
+| `Year`
+| a number, such as `2026`
 
 | `ZoneId`, `ZoneOffset`, `TimeZone`
 | the ID, such as `"America/Sao_Paulo"` or `"-03:00"`
 |===
 
-An `OffsetTime` keeps its seconds and writes a fraction of a second with only the digits it needs, where Spring Boot
-writes `"03:00-03:00"`. A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its keys the same way as
+A `Month` renders by its name, such as `"SEPTEMBER"`, as every enum does, where Spring Boot writes its number; a
+`JsonGenerator.Converter` for `Month` that returns `month.value` renders its number. An `OffsetTime` keeps its seconds and
+writes a fraction of a second with only the digits it needs, where Spring Boot writes `"03:00-03:00"`. A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its keys the same way as
 those values; other map keys render with their `toString()`. Values rendered with `g.render` are written the same way.
 
 == Time Zone

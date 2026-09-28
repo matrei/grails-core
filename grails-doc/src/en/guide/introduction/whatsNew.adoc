@@ -48,8 +48,8 @@ The Grails 8 upgrade guide calls out the major application-impacting changes and
 `render ... as JSON`, `respond` and JSON views now write `Date`, `Calendar`, `TimeZone`, the `java.sql` date types,
 the `java.time` date, time, duration and zone types and `XMLGregorianCalendar` the same way as Spring Boot's default
 Jackson `JsonMapper`, so a Grails application and a Spring Boot application return the same JSON for the same values:
-`java.sql.Time` as `"01:48:46"`, `LocalTime` as `"01:48:46.407254"`, `Duration` as `"PT1H30M"`, `Year` and `Month` as
-numbers, `ZoneId` and `TimeZone` as their IDs, and `Date`, `Calendar` and `ZonedDateTime` map keys as their values
+`java.sql.Time` as `"01:48:46"`, `LocalTime` as `"01:48:46.407254"`, `Duration` as `"PT1H30M"`, `Year` as a number,
+`ZoneId` and `TimeZone` as their IDs, and `Date`, `Calendar` and `ZonedDateTime` map keys as their values
 render. See the Date and Time Rendering sections of the REST and JSON Views guides, and the upgrade guide for the
 types that render differently than in Grails 7.
 

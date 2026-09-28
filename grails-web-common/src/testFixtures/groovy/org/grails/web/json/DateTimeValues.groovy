@@ -129,13 +129,18 @@ class DateTimeValues {
     }
 
     /**
-     * Whether Grails writes the value differently than Spring Boot: an {@link OffsetTime} in its
-     * {@link DateTimeFormatter#ISO_OFFSET_TIME} form, as JSON views have written it since Grails 7, where Jackson
-     * writes {@link OffsetTime#toString()}, which leaves out zero seconds and writes a fraction in groups of three
-     * digits.
+     * Whether Grails writes the value differently than Spring Boot:
+     *
+     * <ul>
+     *   <li>a {@link Month} by its name, as every enum, where Jackson writes its number;</li>
+     *   <li>an {@link OffsetTime} in its {@link DateTimeFormatter#ISO_OFFSET_TIME} form, as JSON views have written it
+     *   since Grails 7, where Jackson writes {@link OffsetTime#toString()}, which leaves out zero seconds and writes a
+     *   fraction in groups of three digits.</li>
+     * </ul>
      */
-    static boolean offsetTimeDiffers(Object value) {
-        value instanceof OffsetTime && DateTimeFormatter.ISO_OFFSET_TIME.format((OffsetTime) value) != value.toString()
+    static boolean differsFromSpringBoot(Object value) {
+        value instanceof Month ||
+                value instanceof OffsetTime && DateTimeFormatter.ISO_OFFSET_TIME.format((OffsetTime) value) != value.toString()
     }
 
     private static Date bcDate(int year, int month, int day) {

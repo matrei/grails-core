@@ -21,7 +21,6 @@ package org.grails.web.converters.configuration;
 import java.sql.Time;
 import java.time.Duration;
 import java.time.LocalTime;
-import java.time.Month;
 import java.time.MonthDay;
 import java.time.OffsetTime;
 import java.time.Period;
@@ -116,8 +115,6 @@ public class ConvertersConfigurationInitializer implements ApplicationContextAwa
         marshallers.add(new org.grails.web.converters.marshaller.json.ByteArrayMarshaller());
         marshallers.add(new org.grails.web.converters.marshaller.json.CollectionMarshaller());
         marshallers.add(new org.grails.web.converters.marshaller.json.MapMarshaller());
-        // ahead of SimpleEnumMarshaller, which also supports java.time.Month
-        marshallers.add(new SimpleTypeMarshaller<>(Month.class, Month::getValue));
         marshallers.add(new org.grails.web.converters.marshaller.json.SimpleEnumMarshaller());
 
         Config grailsConfig = getGrailsConfig();
