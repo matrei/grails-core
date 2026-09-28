@@ -156,9 +156,7 @@ class ActionAnnotations {
             applySecurity(operation, repeatable(method, SecurityRequirementAnnotation))
         }
         replaceDerivedSuccess(operation, derivedSuccess, controllerClass, actionName)
-        if (openapi31) {
-            declareTypes(operation)
-        }
+        declareTypes(operation, openapi31)
     }
 
     /**
@@ -191,37 +189,40 @@ class ActionAnnotations {
     }
 
     /**
-     * swagger-core reads the type an annotation declares into the type of a 3.1 schema, which a 3.1
-     * document is written from the types of, so without them the type is not written at all.
+     * Writes the schemas of an operation as the annotations declare them. swagger-core reads the type
+     * an annotation declares into the type of a 3.1 schema, which a 3.1 document is written from the
+     * types of, so without them the type is not written at all; and it leaves the values a schema an
+     * annotation declares by its type alone lists and suggests as strings, in either version.
      */
-    private static void declareTypes(Operation operation) {
+    private static void declareTypes(Operation operation, boolean openapi31) {
         operation.responses?.values()?.each { ApiResponse response ->
-            declareTypes(response.content)
-            response.headers?.values()?.each { Header header -> declareTypes(header.schema) }
+            declareTypes(response.content, openapi31)
+            response.headers?.values()?.each { Header header -> declareTypes(header.schema, openapi31) }
         }
-        declareTypes(operation.requestBody?.content)
+        declareTypes(operation.requestBody?.content, openapi31)
         operation.parameters?.each { ParameterModel parameter ->
-            declareTypes(parameter.schema)
-            declareTypes(parameter.content)
+            declareTypes(parameter.schema, openapi31)
+            declareTypes(parameter.content, openapi31)
         }
     }
 
-    private static void declareTypes(Content content) {
-        content?.values()?.each { MediaType mediaType -> declareTypes(mediaType.schema) }
+    private static void declareTypes(Content content, boolean openapi31) {
+        content?.values()?.each { MediaType mediaType -> declareTypes(mediaType.schema, openapi31) }
     }
 
-    private static void declareTypes(Schema schema) {
+    private static void declareTypes(Schema schema, boolean openapi31) {
         if (schema == null) {
             return
         }
-        if (schema.specVersion == SpecVersion.V31 && schema.type && !schema.types) {
+        if (openapi31 && schema.specVersion == SpecVersion.V31 && schema.type && !schema.types) {
             schema.setTypes([schema.type] as Set<String>)
         }
-        declareTypes(schema.items)
-        ((Map<String, Schema>) schema.properties)?.values()?.each { Schema property -> declareTypes(property) }
-        [schema.allOf, schema.anyOf, schema.oneOf].each { List<Schema> schemas -> schemas?.each { declareTypes(it) } }
+        SchemaValues.typeValues(schema)
+        declareTypes(schema.items, openapi31)
+        ((Map<String, Schema>) schema.properties)?.values()?.each { Schema property -> declareTypes(property, openapi31) }
+        [schema.allOf, schema.anyOf, schema.oneOf].each { List<Schema> schemas -> schemas?.each { declareTypes(it, openapi31) } }
         if (schema.additionalProperties instanceof Schema) {
-            declareTypes((Schema) schema.additionalProperties)
+            declareTypes((Schema) schema.additionalProperties, openapi31)
         }
     }
 

@@ -143,6 +143,26 @@ class AnnotatedPropertySpec extends Specification {
     }
 
     @Unroll
+    void 'writes the values a property @Schema declares as the type they describe in OpenAPI #version'() {
+        when:
+        Map properties = written(version, [TariffController]) {
+            '/tariff'(controller: 'tariff', action: 'show')
+        }.components.schemas['Tariff'].get('properties')
+
+        then: 'numbers and booleans as such, as the declared type describes them'
+        properties.level == [type: 'integer', format: 'int32', enum: [1, 2], default: 1]
+        properties.rank == [type: 'integer', format: 'int32', enum: [1, 2], default: 2, example: 1]
+        properties.ratio == [type: 'number', enum: [1.5, 2.5], default: 1.5, example: 2.5]
+        properties.active == [type: 'boolean', default: true, example: false]
+
+        and: 'a string as a string'
+        properties.grade == [type: 'string', enum: ['a', 'b'], default: 'a', example: '1']
+
+        where:
+        version << ['openapi_3_0', 'openapi_3_1']
+    }
+
+    @Unroll
     void 'describes a parameter an annotation adds as the type its schema declares in OpenAPI #version'() {
         when:
         Map operation = written(version, [TariffController]) {
@@ -170,6 +190,20 @@ class AnnotatedPropertySpec extends Specification {
         then:
         operation.parameters.find { it.name == 'band' }.schema ==
                 [type: 'integer', format: 'int32', enum: [1, 2], default: 1]
+
+        where:
+        version << ['openapi_3_0', 'openapi_3_1']
+    }
+
+    @Unroll
+    void 'writes the values a response @Schema declares as the type they describe in OpenAPI #version'() {
+        when:
+        Map content = written(version, [TariffController]) {
+            '/tariff/band'(controller: 'tariff', action: 'band')
+        }.paths['/tariff/band'].get.responses['200'].content
+
+        then:
+        content['application/json'].schema == [type: 'integer', format: 'int32', enum: [1, 2], default: 1]
 
         where:
         version << ['openapi_3_0', 'openapi_3_1']
@@ -296,12 +330,37 @@ class RouteController {
     def leg() { }
 }
 
+class Tariff {
+
+    @SchemaAnnotation(type = 'integer', format = 'int32', allowableValues = ['1', '2'], defaultValue = '1')
+    Integer level
+
+    @SchemaAnnotation(allowableValues = ['1', '2'], defaultValue = '2', example = '1')
+    Integer rank
+
+    @SchemaAnnotation(allowableValues = ['1.5', '2.5'], defaultValue = '1.5', example = '2.5')
+    BigDecimal ratio
+
+    @SchemaAnnotation(defaultValue = 'true', example = 'false')
+    Boolean active
+
+    @SchemaAnnotation(allowableValues = ['a', 'b'], defaultValue = 'a', example = '1')
+    String grade
+}
+
 @Artefact('Controller')
 class TariffController {
+
+    @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = Tariff)))
+    def show() { }
 
     @Parameter(name = 'band', in = ParameterIn.QUERY,
             schema = @SchemaAnnotation(type = 'integer', format = 'int32', allowableValues = ['1', '2'], defaultValue = '1'))
     @Parameter(name = 'within', in = ParameterIn.QUERY,
             array = @ArraySchema(schema = @SchemaAnnotation(type = 'integer', format = 'int64')))
     def page() { }
+
+    @ApiResponse(responseCode = '200', content = @Content(mediaType = 'application/json',
+            schema = @SchemaAnnotation(type = 'integer', format = 'int32', allowableValues = ['1', '2'], defaultValue = '1')))
+    def band() { }
 }

@@ -410,6 +410,7 @@ class GrailsModelConverter implements ModelConverter {
             Map<String, String> names = propertyNames.applyTo(model)
             declareReferenceSiblings(model, names, propertyNames)
             declareTypes(model, names, propertyNames)
+            declareValues(model)
             return
         }
 
@@ -427,6 +428,7 @@ class GrailsModelConverter implements ModelConverter {
         Map<String, String> names = propertyNames.applyTo(model)
         declareReferenceSiblings(model, names, propertyNames)
         declareTypes(model, names, propertyNames)
+        declareValues(model)
         if (model.xml == null) {
             // Grails renders a type in XML as an element named for its class.
             model.setXml(new XML().name(GrailsNameUtils.getPropertyName(type)))
@@ -610,6 +612,20 @@ class GrailsModelConverter implements ModelConverter {
                 types << NULL_TYPE
             }
             property.setTypes(types)
+        }
+    }
+
+    /**
+     * The values a property's annotation lists and suggests, which swagger-core leaves strings in an
+     * OpenAPI 3.1 document, are written as the type the property describes, as they are in 3.0, and
+     * those of the values of a collection property too.
+     */
+    private static void declareValues(Schema model) {
+        ((Map<String, Schema>) model.properties)?.values()?.each { Schema property ->
+            SchemaValues.typeValues(property)
+            if (property.items != null) {
+                SchemaValues.typeValues(property.items)
+            }
         }
     }
 
