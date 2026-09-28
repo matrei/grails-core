@@ -18,6 +18,7 @@
  */
 package org.grails.web.binding
 
+import java.sql.Time
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -52,7 +53,8 @@ class DateTimeRoundTripBindingSpec extends Specification implements ControllerUn
                 at    : Date.from(instant),
                 offset: OffsetDateTime.parse('2025-10-07T23:14:31+02:00'),
                 zoned : ZonedDateTime.parse('2025-10-07T23:14:31+02:00'),
-                local : LocalDateTime.parse('2025-10-07T21:14:31.25')
+                local : LocalDateTime.parse('2025-10-07T21:14:31.25'),
+                time  : Time.valueOf('01:48:46')
         ] as JSON).toString()
 
         when:
@@ -64,6 +66,7 @@ class DateTimeRoundTripBindingSpec extends Specification implements ControllerUn
         appointment.offset.toInstant() == instant
         appointment.zoned.toInstant() == instant
         appointment.local == LocalDateTime.parse('2025-10-07T21:14:31.25')
+        appointment.time == Time.valueOf('01:48:46')
     }
 
     void 'binds a date before 1582 that Grails renders in JSON back to the same date'() {
@@ -123,6 +126,7 @@ class Appointment implements Validateable {
     OffsetDateTime offset
     ZonedDateTime zoned
     LocalDateTime local
+    Time time
 }
 
 @Artefact('Controller')
