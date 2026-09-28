@@ -64,6 +64,8 @@ Each skill is written to a directory named after its path in the jar, such as `+
 
 WARNING: `extractSkillsJars` deletes everything in the output directory before it writes the skills, and `clean` deletes the directory. Point it at a directory that holds only extracted skills, not one with skills the project keeps itself.
 
+If `extractSkillsJars` reports `Found 0 SkillsJar(s)`, at least one `skill` dependency did not resolve, and the task extracted none of the skills even though the build succeeded. `./gradlew dependencies --configuration skill` marks each dependency that did not resolve as `FAILED`.
+
 The `skill` configuration stays off the application's compile and runtime classpaths. The Grails Gradle plugin applies the Grails BOM to it, as it does to the application's other configurations, which is why the dependencies need no version.
 
 TIP: Treat the extracted skills as build output: exclude them from version control and run `extractSkillsJars` again after upgrading Grails, so the skills match the new version.

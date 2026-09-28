@@ -34,7 +34,7 @@ Grails is built on:
 - **Spring Boot**: 4.1.x
 - **Spring Framework**: 7.0.x
 - **Groovy**: 5.1.x
-- **Gradle**: 9.7.x
+- **Gradle**: 9.7 or later
 - **Spock**: 2.4-groovy-5.0
 - **Jakarta EE**: 10 (migrated from javax.*)
 - **Micronaut**: Optional via `grails-micronaut` plugin

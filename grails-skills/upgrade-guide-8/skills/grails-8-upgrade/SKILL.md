@@ -37,7 +37,7 @@ Use the published Grails documentation as the source of truth before changing an
 | `https://grails.apache.org/docs/<version>/guide/introduction.html#whatsNew` | Grails 8 feature and platform overview |
 | `https://grails.apache.org/docs/<version>/guide/introduction.html#dependencyUpgrades` | Platform dependency baseline |
 | `https://grails.apache.org/docs/<version>/ref/Versions/Grails%20BOM.html` | Dependency versions of the Grails BOM, with links to the Hibernate 5, Hibernate 7, and Neo4j BOM variants |
-| `https://grails.apache.org/docs/<version>/guide/upgrading.html#_7_micronaut_integration` | Micronaut integration, which points to the Grails Micronaut project's own upgrade documentation |
+| `https://grails.apache.org/docs/<version>/guide/upgrading.html#micronaut-integration` | Micronaut integration, which points to the Grails Micronaut project's own upgrade documentation |
 | `https://grails.apache.org/docs/<version>/guide/theWebLayer.html#contentNegotiation` | MIME defaults and Accept header behavior |
 | `https://grails.apache.org/docs/<version>/grails-data/hibernate7/manual/index.html#upgradeNotes` | Hibernate 7 GORM query and tenant-schema notes |
 | `https://grails.apache.org/docs/<version>/grails-data/hibernate7/manual/index.html#databaseMigration` | Database migration plugin for Hibernate 7, which uses the same version as Grails |

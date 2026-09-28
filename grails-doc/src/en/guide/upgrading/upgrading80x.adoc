@@ -297,6 +297,7 @@ import org.springframework.http.HttpStatus
 response.status = HttpStatus.FOUND.value()
 ----
 
+[[micronaut-integration]]
 ==== 7. Micronaut Integration
 
 The Grails Micronaut plugin and its BOMs are now maintained and released from the https://github.com/apache/grails-micronaut[Apache Grails Micronaut repository].
