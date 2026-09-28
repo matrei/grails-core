@@ -217,6 +217,33 @@ class UnifiedMongoTransactionSpec extends EmbeddedReplicaSetSpec {
         !TransactionSynchronizationManager.hasResource(factory)
     }
 
+    void "test a unified transaction in a new session runs Spring Data in its own session, and the outer one keeps its own"() {
+        when: "a transaction in a new session commits inside a unified one, which then fails"
+        transactionTemplate.execute {
+            new GormThing(name: "outer").save(flush: true)
+            mongoTemplate.insert(new SpringDataThing(name: "outerSD"))
+            GormThing.withNewSession {
+                transactionTemplate.execute {
+                    new GormThing(name: "inner").save(flush: true)
+                    mongoTemplate.insert(new SpringDataThing(name: "innerSD"))
+                    return null
+                }
+            }
+            mongoTemplate.insert(new SpringDataThing(name: "afterSD"))
+            throw new RuntimeException("outer")
+        }
+
+        then:
+        thrown(RuntimeException)
+
+        and: "the new session's transaction committed both stacks' writes, and the outer one's MongoTemplate write after it rolled back with the rest"
+        GormThing.withNewSession { GormThing.findAll()*.name } == ["inner"]
+        mongoTemplate.findAll(SpringDataThing)*.name == ["innerSD"]
+
+        and: "nothing was left bound to the thread"
+        !TransactionSynchronizationManager.hasResource(factory)
+    }
+
     void "test a read-write unified transaction commits an unflushed GORM write"() {
         when: "the same sequence runs without the read-only flag"
         transactionTemplate.execute {

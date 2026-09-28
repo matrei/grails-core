@@ -27,9 +27,11 @@ import org.springframework.data.mongodb.MongoDatabaseFactory
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionSynchronizationManager
 
-import org.grails.datastore.mapping.mongo.AbstractMongoSession
 import org.grails.datastore.mapping.mongo.MongoDatastore
+import org.grails.datastore.mapping.mongo.MongoTransaction
 import org.grails.datastore.mapping.transactions.DatastoreTransactionManager
+import org.grails.datastore.mapping.transactions.Transaction
+import org.grails.datastore.mapping.transactions.TransactionObject
 
 /**
  * A {@link org.springframework.transaction.PlatformTransactionManager} that drives a single GORM
@@ -51,8 +53,10 @@ import org.grails.datastore.mapping.transactions.DatastoreTransactionManager
  * <p><strong>Propagation:</strong> as for GORM's {@link DatastoreTransactionManager}. A transaction
  * started inside another joins it, for Spring Data as for GORM. {@code REQUIRES_NEW} suspends both:
  * the new transaction runs in a GORM session and {@link ClientSession} of its own, which its
- * {@code MongoTemplate} calls use, and the outer transaction's are restored when it completes.
- * {@code NESTED} is not supported.</p>
+ * {@code MongoTemplate} calls use, and the outer transaction's are restored when it completes. A
+ * transaction begun in a session of its own ({@code withNewSession}) likewise runs its
+ * {@code MongoTemplate} calls in its own {@link ClientSession}, and the surrounding transaction's is
+ * put back when it completes. {@code NESTED} is not supported.</p>
  *
  * @since 8.0
  */
@@ -70,7 +74,7 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
     protected void doBegin(Object transaction, TransactionDefinition definition) {
         super.doBegin(transaction, definition)
 
-        ClientSession clientSession = currentClientSession()
+        ClientSession clientSession = clientSession(transaction)
         if (clientSession != null) {
             GormSpringDataSessionSupport.bindClientSession(databaseFactory, clientSession)
         }
@@ -99,15 +103,19 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
 
     @Override
     protected void doCleanupAfterCompletion(Object transaction) {
-        if (TransactionSynchronizationManager.hasResource(databaseFactory)) {
-            TransactionSynchronizationManager.unbindResource(databaseFactory)
+        // Only the holder this transaction bound, putting back the one it set aside: that one belongs to
+        // the transaction this one ran inside, in a session of its own
+        ClientSession clientSession = clientSession(transaction)
+        if (clientSession != null) {
+            GormSpringDataSessionSupport.unbindClientSession(databaseFactory, clientSession)
         }
         super.doCleanupAfterCompletion(transaction)
     }
 
-    private ClientSession currentClientSession() {
-        def session = getDatastore().getCurrentSession()
-        return session instanceof AbstractMongoSession ? ((AbstractMongoSession) session).getClientSession() : null
+    /** The ClientSession of the server-side transaction this one began; null when it began none (read-only) */
+    private static ClientSession clientSession(Object transaction) {
+        Transaction<?> tx = ((TransactionObject) transaction).getTransaction()
+        return tx instanceof MongoTransaction ? ((MongoTransaction) tx).getNativeTransaction() : null
     }
 
     /** What a suspended transaction had bound: GORM's session holder, and Spring Data's, if any */
