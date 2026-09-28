@@ -106,17 +106,42 @@ class GormSharedSessionMongoTransactionManagerSpec extends Specification {
         !TransactionSynchronizationManager.hasResource(databaseFactory)
     }
 
-    void "doCleanupAfterCompletion of a transaction that bound no holder leaves the surrounding transaction's in place"() {
+    void "a transaction that begins no server-side transaction in a session bound on top sets the surrounding holder aside, and puts it back"() {
         given: "a transaction with a holder bound, and a session bound on top of it, as withNewSession binds one"
         begin(sessionWithServerTransaction(Mock(ClientSession)))
         Object surrounding = TransactionSynchronizationManager.getResource(databaseFactory)
         assert surrounding != null
         AbstractMongoSession onTop = sessionWithoutServerTransaction()
         (TransactionSynchronizationManager.getResource(datastore) as SessionHolder).addSession(onTop)
-
-        and: "a transaction in that session that begins no server-side transaction"
         TransactionObject inner = manager.doGetTransaction()
+
+        when: "a transaction in that session begins no server-side transaction"
         manager.doBegin(inner, new DefaultTransactionDefinition())
+
+        then: "its MongoTemplate calls run without a ClientSession, not in the surrounding one"
+        !TransactionSynchronizationManager.hasResource(databaseFactory)
+
+        when:
+        manager.doCleanupAfterCompletion(inner)
+
+        then:
+        TransactionSynchronizationManager.getResource(databaseFactory).is(surrounding)
+    }
+
+    void "a transaction that begins a server-side transaction in a session bound on top binds its own holder, and puts the surrounding one back"() {
+        given:
+        begin(sessionWithServerTransaction(Mock(ClientSession)))
+        Object surrounding = TransactionSynchronizationManager.getResource(databaseFactory)
+        assert surrounding != null
+        (TransactionSynchronizationManager.getResource(datastore) as SessionHolder).addSession(sessionWithServerTransaction(Mock(ClientSession)))
+        TransactionObject inner = manager.doGetTransaction()
+
+        when:
+        manager.doBegin(inner, new DefaultTransactionDefinition())
+
+        then:
+        TransactionSynchronizationManager.hasResource(databaseFactory)
+        !TransactionSynchronizationManager.getResource(databaseFactory).is(surrounding)
 
         when:
         manager.doCleanupAfterCompletion(inner)

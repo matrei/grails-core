@@ -244,6 +244,34 @@ class UnifiedMongoTransactionSpec extends EmbeddedReplicaSetSpec {
         !TransactionSynchronizationManager.hasResource(factory)
     }
 
+    void "test a read-only unified transaction in a new session runs Spring Data outside the surrounding transaction, as one on its own does"() {
+        given:
+        TransactionTemplate readOnlyTemplate = new TransactionTemplate(new GormSharedSessionMongoTransactionManager(datastore, factory))
+        readOnlyTemplate.readOnly = true
+
+        when: "it writes through MongoTemplate, and the surrounding transaction then fails"
+        transactionTemplate.execute {
+            mongoTemplate.insert(new SpringDataThing(name: "outerSD"))
+            GormThing.withNewSession {
+                readOnlyTemplate.execute {
+                    mongoTemplate.insert(new SpringDataThing(name: "readOnlySD"))
+                    return null
+                }
+            }
+            mongoTemplate.insert(new SpringDataThing(name: "afterSD"))
+            throw new RuntimeException("outer")
+        }
+
+        then:
+        thrown(RuntimeException)
+
+        and: "its write was not part of the surrounding transaction, whose writes before and after it rolled back"
+        mongoTemplate.findAll(SpringDataThing)*.name == ["readOnlySD"]
+
+        and:
+        !TransactionSynchronizationManager.hasResource(factory)
+    }
+
     void "test a read-write unified transaction commits an unflushed GORM write"() {
         when: "the same sequence runs without the read-only flag"
         transactionTemplate.execute {

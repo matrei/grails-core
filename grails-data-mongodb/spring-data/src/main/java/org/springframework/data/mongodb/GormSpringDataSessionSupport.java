@@ -28,10 +28,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *
  * <p>This lives in {@code org.springframework.data.mongodb} because Spring Data's
  * {@link MongoResourceHolder} (the resource a {@code MongoTemplate} looks up to discover an active
- * session) is package-private. Only constructing the holder and reading its session need that
- * access; binding, unbinding and rebinding go through the public
- * {@link TransactionSynchronizationManager} keyed by the {@link MongoDatabaseFactory}, so callers can
- * treat the holder as an opaque object.</p>
+ * session) is package-private. Only the holder construction needs that access; binding, unbinding
+ * and rebinding go through the public {@link TransactionSynchronizationManager} keyed by the
+ * {@link MongoDatabaseFactory}, so callers can treat the holder as an opaque object.</p>
  *
  * <p><strong>Invariant:</strong> GORM owns the {@link ClientSession} lifecycle (it commits/aborts and
  * closes it). The holder bound here is effectively read-only for Spring Data — {@code MongoTemplate}
@@ -39,8 +38,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * session, so there is no double-close.</p>
  *
  * <p><strong>Compatibility:</strong> this depends on the package-private
- * {@code MongoResourceHolder(ClientSession, MongoDatabaseFactory)} constructor and
- * {@code getSession()} of Spring Data MongoDB
+ * {@code MongoResourceHolder(ClientSession, MongoDatabaseFactory)} constructor of Spring Data MongoDB
  * (verified against the 5.x line shipped with Spring Boot 4). A change to that internal type would
  * break compilation, which the dedicated coupling smoke test surfaces explicitly. Because this is a
  * deliberate split package with Spring Data, this module is supported on the class path only and is
@@ -54,39 +52,13 @@ public final class GormSpringDataSessionSupport {
     }
 
     /**
-     * Binds the given session to the current thread for the given factory. A holder already bound, such
-     * as the surrounding transaction's when this one runs in a session of its own
-     * ({@code withNewSession}), is set aside until {@link #unbindClientSession} puts it back.
+     * Binds the given session to the current thread for the given factory, if nothing is bound yet.
      */
     public static void bindClientSession(MongoDatabaseFactory databaseFactory, ClientSession clientSession) {
-        Object setAside = TransactionSynchronizationManager.unbindResourceIfPossible(databaseFactory);
-        MongoResourceHolder holder = new GormMongoResourceHolder(clientSession, databaseFactory, setAside);
-        holder.setSynchronizedWithTransaction(true);
-        TransactionSynchronizationManager.bindResource(databaseFactory, holder);
-    }
-
-    /**
-     * Unbinds the holder {@link #bindClientSession} bound for the given session, and binds back the one
-     * it set aside. A holder bound for any other session belongs to another transaction, and is left in
-     * place.
-     */
-    public static void unbindClientSession(MongoDatabaseFactory databaseFactory, ClientSession clientSession) {
-        Object bound = TransactionSynchronizationManager.getResource(databaseFactory);
-        if (bound instanceof GormMongoResourceHolder holder && holder.getSession() == clientSession) {
-            TransactionSynchronizationManager.unbindResource(databaseFactory);
-            if (holder.setAside != null) {
-                TransactionSynchronizationManager.bindResource(databaseFactory, holder.setAside);
-            }
-        }
-    }
-
-    private static final class GormMongoResourceHolder extends MongoResourceHolder {
-
-        private final Object setAside;
-
-        GormMongoResourceHolder(ClientSession session, MongoDatabaseFactory databaseFactory, Object setAside) {
-            super(session, databaseFactory);
-            this.setAside = setAside;
+        if (!TransactionSynchronizationManager.hasResource(databaseFactory)) {
+            MongoResourceHolder holder = new MongoResourceHolder(clientSession, databaseFactory);
+            holder.setSynchronizedWithTransaction(true);
+            TransactionSynchronizationManager.bindResource(databaseFactory, holder);
         }
     }
 }

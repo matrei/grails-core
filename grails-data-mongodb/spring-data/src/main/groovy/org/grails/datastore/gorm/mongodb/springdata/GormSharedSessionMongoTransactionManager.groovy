@@ -18,6 +18,8 @@
  */
 package org.grails.datastore.gorm.mongodb.springdata
 
+import java.util.concurrent.ConcurrentHashMap
+
 import groovy.transform.CompileStatic
 
 import com.mongodb.client.ClientSession
@@ -55,8 +57,8 @@ import org.grails.datastore.mapping.transactions.TransactionObject
  * the new transaction runs in a GORM session and {@link ClientSession} of its own, which its
  * {@code MongoTemplate} calls use, and the outer transaction's are restored when it completes. A
  * transaction begun in a session of its own ({@code withNewSession}) likewise runs its
- * {@code MongoTemplate} calls in its own {@link ClientSession}, and the surrounding transaction's is
- * put back when it completes. {@code NESTED} is not supported.</p>
+ * {@code MongoTemplate} calls in its own {@link ClientSession}, or, read-only, without one, and the
+ * surrounding transaction's is put back when it completes. {@code NESTED} is not supported.</p>
  *
  * @since 8.0
  */
@@ -64,6 +66,9 @@ import org.grails.datastore.mapping.transactions.TransactionObject
 class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManager {
 
     private final MongoDatabaseFactory databaseFactory
+    // Spring Data holders set aside by transactions begun in a session of their own inside another,
+    // keyed by transaction, and put back when each completes
+    private final Map<Object, Object> setAside = new ConcurrentHashMap<>()
 
     GormSharedSessionMongoTransactionManager(MongoDatastore datastore, MongoDatabaseFactory databaseFactory) {
         this.databaseFactory = databaseFactory
@@ -74,6 +79,13 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
     protected void doBegin(Object transaction, TransactionDefinition definition) {
         super.doBegin(transaction, definition)
 
+        // A holder already bound names the ClientSession of a transaction this one runs inside, in a
+        // session of its own (withNewSession). This one's MongoTemplate calls must not run in it,
+        // whether this one begins a ClientSession of its own or, read-only, runs without one
+        Object surrounding = TransactionSynchronizationManager.unbindResourceIfPossible(databaseFactory)
+        if (surrounding != null) {
+            setAside.put(transaction, surrounding)
+        }
         ClientSession clientSession = clientSession(transaction)
         if (clientSession != null) {
             GormSpringDataSessionSupport.bindClientSession(databaseFactory, clientSession)
@@ -103,11 +115,13 @@ class GormSharedSessionMongoTransactionManager extends DatastoreTransactionManag
 
     @Override
     protected void doCleanupAfterCompletion(Object transaction) {
-        // Only the holder this transaction bound, putting back the one it set aside: that one belongs to
-        // the transaction this one ran inside, in a session of its own
-        ClientSession clientSession = clientSession(transaction)
-        if (clientSession != null) {
-            GormSpringDataSessionSupport.unbindClientSession(databaseFactory, clientSession)
+        Object surrounding = setAside.remove(transaction)
+        // Leaves a holder alone that this transaction neither bound nor found bound when it began
+        if (clientSession(transaction) != null || surrounding != null) {
+            TransactionSynchronizationManager.unbindResourceIfPossible(databaseFactory)
+        }
+        if (surrounding != null) {
+            TransactionSynchronizationManager.bindResource(databaseFactory, surrounding)
         }
         super.doCleanupAfterCompletion(transaction)
     }
