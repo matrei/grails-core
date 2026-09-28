@@ -321,7 +321,7 @@ class Jsr310ConvertersConfigurationSpec extends Specification {
         value << [9.7, 9.7d, 9.5f, Double.NaN, 13, 0]
     }
 
-    void "a Jsr310DateValueConverter subclass calling convert(value, callable) still reads only the configured formats"() {
+    void "a Jsr310DateValueConverter subclass written for Grails 7, calling convert(value, callable) with the format pattern, reads only the configured formats"() {
         given:
         def converter = new FormatsOnlyLocalTimeConverter(config)
 
@@ -344,8 +344,8 @@ class FormatsOnlyLocalTimeConverter extends Jsr310ConvertersConfiguration.Jsr310
 
     @Override
     LocalTime convert(Object value) {
-        convert(value) { DateTimeFormatter formatter ->
-            LocalTime.parse((CharSequence) value, formatter)
+        convert(value) { String format ->
+            LocalTime.parse((CharSequence) value, DateTimeFormatter.ofPattern(format))
         }
     }
 

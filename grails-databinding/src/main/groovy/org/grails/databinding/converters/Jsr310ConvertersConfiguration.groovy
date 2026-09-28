@@ -442,39 +442,21 @@ class Jsr310ConvertersConfiguration {
         }
 
         /**
-         * Converts a value with the first of the configured date formats that reads all of it.
+         * Converts a value with the first of the configured date formats that reads it.
          *
-         * @param callable parses the value with the formatter it is given
+         * @param callable parses the value with the date format pattern it is given, a {@code String}
          */
         T convert(Object value, Closure callable) {
-            convert(value, null, callable)
-        }
-
-        /**
-         * Converts a value in the ISO 8601 form of the type, which is how Grails renders it in JSON, or else with
-         * the first of the configured date formats that reads all of it.
-         *
-         * @param iso the ISO 8601 formatter of the type, or {@code null} to use only the configured formats
-         * @param callable parses the value with the formatter it is given
-         */
-        T convert(Object value, DateTimeFormatter iso, Closure callable) {
             T dateValue
             if (value instanceof String) {
                 if (!value) {
                     return null
                 }
-                if (iso != null) {
-                    try {
-                        return (T) callable.call(iso)
-                    } catch (DateTimeParseException ignored) {
-                        // Not the ISO 8601 form, so one of the configured formats.
-                    }
-                }
                 def firstException
                 formatStrings.each { String format ->
                     if (dateValue == null) {
                         try {
-                            dateValue = (T) callable.call(DateTimeFormatter.ofPattern(format))
+                            dateValue = (T) callable.call(format)
                         } catch (Exception e) {
                             firstException = firstException ?: e
                         }
@@ -485,6 +467,27 @@ class Jsr310ConvertersConfiguration {
                 }
             }
             dateValue
+        }
+
+        /**
+         * Converts a value in the ISO 8601 form of the type, which is how Grails renders it in JSON, or else with
+         * the first of the configured date formats that reads it.
+         *
+         * @param iso the ISO 8601 formatter of the type
+         * @param callable parses the value with the {@link DateTimeFormatter} it is given, the ISO 8601 one or
+         *        one for a configured date format
+         */
+        T convert(Object value, DateTimeFormatter iso, Closure callable) {
+            if (value instanceof String && value) {
+                try {
+                    return (T) callable.call(iso)
+                } catch (DateTimeParseException ignored) {
+                    // Not the ISO 8601 form, so one of the configured formats.
+                }
+            }
+            convert(value) { String format ->
+                callable.call(DateTimeFormatter.ofPattern(format))
+            }
         }
 
         @Override
