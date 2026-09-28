@@ -594,8 +594,8 @@ ${importStatements}
             // dependencies at all - then the withDependencies actions. A platform added eagerly
             // counts as a declared dependency and silently disables the defaults other plugins
             // rely on, such as this plugin's own profile configuration (#16335).
-            // Registering through configureEach also covers
-            // configurations that plugins create after this callback has run.
+            // Registering through configureEach also covers configurations that plugins create
+            // after this callback has run.
             DependencyHandler dependencyHandler = project.dependencies
             project.configurations.configureEach { Configuration configuration ->
                 if (!configuration.canBeDeclared || isExcludedFromBomPlatform(configuration.name)) {
