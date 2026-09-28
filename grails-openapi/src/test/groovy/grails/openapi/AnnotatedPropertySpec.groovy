@@ -113,6 +113,39 @@ class AnnotatedPropertySpec extends Specification {
         properties.typedLong == [type: 'integer', format: 'int64']
     }
 
+    @Unroll
+    void 'a reference a property @Schema makes nullable is the referenced object or null in OpenAPI #version'() {
+        when: 'a Validateable declaring no constraints, and a class that is neither it nor an entity'
+        Map schemas = written(version, [RouteController]) {
+            '/routes/stop'(controller: 'route', action: 'stop')
+            '/routes/leg'(controller: 'route', action: 'leg')
+        }.components.schemas
+        Map stop = schemas['RouteStop']
+
+        then: 'it is not required'
+        !(stop.required ?: []).contains('address')
+
+        and: 'it permits the address or null, where swagger-core wrote a schema nothing satisfies, or none that allowed null'
+        nullableReference(version, stop.get('properties').address, [:])
+        nullableReference(version, schemas['RouteLeg'].get('properties').destination, [:])
+
+        and: 'what the annotation says of it besides is kept'
+        nullableReference(version, schemas['RouteLeg'].get('properties').origin, [description: 'Where the leg starts'])
+
+        and: 'a reference both its annotation and its constraint make nullable is described once'
+        nullableReference(version, stop.get('properties').depot, [:])
+
+        where:
+        version << ['openapi_3_0', 'openapi_3_1']
+    }
+
+    private static boolean nullableReference(String version, Map property, Map besides) {
+        Map reference = ['$ref': '#/components/schemas/RouteAddress']
+        version == 'openapi_3_0'
+                ? property == [nullable: true, allOf: [reference]] + besides
+                : property == [oneOf: [reference, [type: 'null']]] + besides
+    }
+
     private static Map written(String version, List<Class<?>> controllers, Closure mappings) {
         def openApi = OpenApiFixture.document(['springdoc.api-docs.version': version], controllers, [], mappings)
         (Map) new JsonSlurper().parseText(GrailsOpenApiGenerator.serialize(openApi, 'json'))
@@ -189,4 +222,40 @@ class BalanceController {
 
     @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = Money)))
     def show() { }
+}
+
+class RouteAddress {
+    String street
+}
+
+class RouteStop implements Validateable {
+
+    @SchemaAnnotation(nullable = true)
+    RouteAddress address
+
+    @SchemaAnnotation(nullable = true)
+    RouteAddress depot
+
+    static constraints = {
+        depot nullable: true
+    }
+}
+
+class RouteLeg {
+
+    @SchemaAnnotation(nullable = true)
+    RouteAddress destination
+
+    @SchemaAnnotation(nullable = true, description = 'Where the leg starts')
+    RouteAddress origin
+}
+
+@Artefact('Controller')
+class RouteController {
+
+    @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = RouteStop)))
+    def stop() { }
+
+    @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = RouteLeg)))
+    def leg() { }
 }

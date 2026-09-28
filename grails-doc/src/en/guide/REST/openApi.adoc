@@ -484,8 +484,8 @@ property a command object can only read. Tools that understand OpenAPI leave a r
 out of a request body, so one schema describes both directions.
 
 A property described by a reference to another schema, such as an embedded class, keeps what is said
-of it, being nullable or read only, or the description, deprecation or access mode `@Schema` gives
-it. OpenAPI 3.1 says so beside the `$ref`, and a nullable one is `oneOf` the reference and a `null`
+of it, being nullable, whether its constraint or its `@Schema` says so, or read only, or the
+description, deprecation or access mode `@Schema` gives it. OpenAPI 3.1 says so beside the `$ref`, and a nullable one is `oneOf` the reference and a `null`
 type. OpenAPI 3.0 ignores anything beside a `$ref`, so there the property is `allOf` the reference,
 and says it on that.
 

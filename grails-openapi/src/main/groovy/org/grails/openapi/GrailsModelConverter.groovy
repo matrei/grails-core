@@ -541,21 +541,33 @@ class GrailsModelConverter implements ModelConverter {
     }
 
     /**
-     * OpenAPI 3.0 ignores anything beside a {@code $ref}, so swagger-core leaves out of a property
-     * described by one what its {@code @Schema} says of the property. It is said of all of the
-     * reference instead.
+     * What a property's {@code @Schema} says of a property described by a reference.
+     *
+     * <p>OpenAPI 3.0 ignores anything beside a {@code $ref}, so swagger-core leaves it out, and it is
+     * said of all of the reference instead. OpenAPI 3.1 reads it beside the {@code $ref}, except that
+     * swagger-core writes a nullable one as the reference and a {@code null} type together, which
+     * nothing satisfies, so it is described as a nullable reference is: one of the reference and a
+     * {@code null} type.</p>
      */
     private static void declareReferenceSiblings(Schema model, Map<String, String> names, PropertyNames propertyNames) {
-        if (model.specVersion == SpecVersion.V31 || !model.properties) {
+        if (!model.properties) {
             return
         }
+        boolean openapi31 = model.specVersion == SpecVersion.V31
         new ArrayList<String>(((Map<String, Schema>) model.properties).keySet()).each { String described ->
             SchemaAnnotation declared = ((Schema) model.properties[described]).$ref
                     ? propertyNames.declaredSchema(propertyNamed(names, described)) : null
+            if (openapi31) {
+                if (declared?.nullable()) {
+                    model.properties[described] = nullableReference((Schema) model.properties[described])
+                }
+                return
+            }
             AccessMode access = declared?.accessMode()
             boolean readOnly = access == AccessMode.READ_ONLY
             boolean writeOnly = access == AccessMode.WRITE_ONLY
-            if (declared == null || !(declared.description() || declared.deprecated() || readOnly || writeOnly)) {
+            if (declared == null
+                    || !(declared.description() || declared.deprecated() || declared.nullable() || readOnly || writeOnly)) {
                 return
             }
             Schema property = describable(model, described)
@@ -564,6 +576,9 @@ class GrailsModelConverter implements ModelConverter {
             }
             if (declared.deprecated()) {
                 property.setDeprecated(true)
+            }
+            if (declared.nullable()) {
+                property.setNullable(true)
             }
             if (readOnly) {
                 property.setReadOnly(true)
@@ -727,6 +742,10 @@ class GrailsModelConverter implements ModelConverter {
      * all of the reference, nullable.
      */
     private static Schema nullableReference(Schema reference) {
+        // The null swagger-core puts beside the reference for a nullable annotation is said by the
+        // null type the reference is one of instead.
+        reference.setTypes(null)
+        reference.setNullable(null)
         Schema nullable = new JsonSchema()
         nullable.setOneOf([reference, new JsonSchema().types([NULL_TYPE] as Set<String>)])
         nullable.setDescription(reference.description)
