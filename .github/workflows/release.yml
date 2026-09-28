@@ -558,8 +558,8 @@ jobs:
         run: |
           echo "::group::Manual Grails Forge deployment"
           echo "Deploy Forge via https://github.com/apache/grails-core/actions/workflows/forge-deploy-aws.yml"
-          echo "Use workflow from the maintenance branch. Choose slot latest, snapshot, next, next-snapshot, prev, prev-snapshot, or older."
-          echo "Do not run this workflow from a historical git tag."
+          echo "Use workflow from the release tag ${TAG}; the deployed version comes from that ref."
+          echo "Choose slot latest, next, prev, or older."
           echo "::endgroup::"
   docs:
     environment: docs
