@@ -699,13 +699,20 @@ by swagger-core, so they mean what they mean on any other endpoint:
 | Annotation | Effect
 
 | `@Operation` | the summary, description, operation id, tags, deprecation, external documentation, parameters, responses, request body and security of an action
-| `@ApiResponse` | a response of an action, or, on the controller, of each of its actions; one declared for a status the operation already describes replaces it
+| `@ApiResponse` | a response of an action, or, on the controller, of each of its actions; one declared for a status the operation already describes replaces it, and a success status an action declares replaces the success statuses derived for it
 | `@Parameter` | a parameter of an action, declared on the action or on one of its parameters; one the operation already describes, such as a path variable, is refined
 | `@RequestBody` | the body an action binds
 | `@SecurityRequirement` | the security of an action, or, on the controller, of each of its actions
 | `@Tag` | the groups a controller's operations appear under, and their descriptions
 | `@Hidden` | withholds a controller or an action
 |===
+
+An action answers success with the statuses it declares, so a success status declared on the action,
+or in its `@Operation`, replaces any other success status derived for it, with what that said, such
+as a `Location` header. A `save` that queues what it is sent, rather than creating it, and declares
+`@ApiResponse(responseCode = '200', description = 'Queued')` is described answering `200`, not
+`201`. An error status an action declares is added to those derived, and a status its controller
+declares is added to each of its actions.
 
 [source,groovy]
 ----

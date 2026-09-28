@@ -125,6 +125,7 @@ class ActionAnnotations {
         if (controllerClass == null) {
             return
         }
+        Set<String> derivedSuccess = successCodes(operation.responses?.keySet())
         repeatable(controllerClass, ApiResponseAnnotation).each { ApiResponseAnnotation declared ->
             applyResponse(operation, declared, components, openapi31)
         }
@@ -147,9 +148,39 @@ class ActionAnnotations {
             applyRequestBody(operation, method.getAnnotation(RequestBodyAnnotation), components, openapi31)
             applySecurity(operation, repeatable(method, SecurityRequirementAnnotation))
         }
+        replaceDerivedSuccess(operation, derivedSuccess, controllerClass, actionName)
         if (openapi31) {
             declareTypes(operation)
         }
+    }
+
+    /**
+     * The success statuses an action declares are the ones it answers with, so a success status
+     * derived for it that it does not declare, such as the {@code 201} of a save that answers
+     * {@code 200}, is left out, with what it said, such as a {@code Location} header. An action
+     * declaring only an error status keeps the derived success, and one it declares is added.
+     */
+    private static void replaceDerivedSuccess(Operation operation, Set<String> derived, Class<?> controllerClass,
+                                              String actionName) {
+        List<ApiResponseAnnotation> responses = []
+        for (Method method : actionMethods(controllerClass, actionName)) {
+            responses.addAll(repeatable(method, ApiResponseAnnotation))
+            OperationAnnotation declaredOperation = method.getAnnotation(OperationAnnotation)
+            if (declaredOperation != null) {
+                responses.addAll(declaredOperation.responses())
+            }
+        }
+        Set<String> declared = successCodes(responses*.responseCode())
+        if (declared) {
+            (derived - declared).each { String code -> operation.responses.remove(code) }
+        }
+    }
+
+    /**
+     * The success statuses among response codes: those of the {@code 2XX} range.
+     */
+    private static Set<String> successCodes(Collection<String> codes) {
+        (codes ?: Collections.<String> emptyList()).findAll { String code -> code?.startsWith('2') }.toSet()
     }
 
     /**
