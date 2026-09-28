@@ -19,7 +19,6 @@
 package org.apache.grails.data.testing.tck.tests
 
 import org.springframework.transaction.TransactionDefinition
-import spock.lang.PendingFeatureIf
 
 import org.apache.grails.data.testing.tck.base.GrailsDataTckSpec
 import org.apache.grails.data.testing.tck.domains.ChildEntity
@@ -71,8 +70,6 @@ class NestedTransactionSpec extends GrailsDataTckSpec {
         names().empty
     }
 
-    // Neo4j commits the writes made after the caught failure (it did before joining changed, too)
-    @PendingFeatureIf({ Boolean.getBoolean('neo4j.gorm.suite') })
     void 'a transaction that catches a joined transaction\'s failure is rolled back as a whole'() {
         when:
         Throwable failure = onFreshThread {
@@ -131,8 +128,6 @@ class NestedTransactionSpec extends GrailsDataTckSpec {
         names() == ['A', 'B', 'C']
     }
 
-    // Neo4j commits the writes made after the caught failure, as in the feature above that catches one
-    @PendingFeatureIf({ Boolean.getBoolean('neo4j.gorm.suite') })
     void 'a transaction in a new session, run after a joined transaction failed, commits its writes and the outer one still rolls back'() {
         when:
         Throwable failure = onFreshThread {

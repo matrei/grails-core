@@ -39,7 +39,8 @@ public class Neo4jDatastoreTransactionManager extends DatastoreTransactionManage
     }
 
     /**
-     * Override doSetRollbackOnly to call {@link org.neo4j.graphdb.Transaction#terminate()}
+     * Also marks the Neo4j transaction rollback-only, so that it rolls back rather than commits even
+     * if its commit is reached, and leaves it open for the surrounding transaction's later writes.
      * @param status The transaction status
      * @throws TransactionException
      */
