@@ -27,7 +27,8 @@ import grails.testing.gorm.DataTest
 import grails.validation.Validateable
 
 /**
- * A {@link Month} binds from the number that {@code grails.converters.JSON}, JSON views and Spring Boot render it as.
+ * A {@link Month} binds from the number that Spring Boot renders it as, and from the name that
+ * {@code grails.converters.JSON} and JSON views render it as.
  */
 class MonthBindingSpec extends Specification implements DataTest {
 

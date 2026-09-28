@@ -296,7 +296,7 @@ class Jsr310ConvertersConfigurationSpec extends Specification {
         converter.convert(1) instanceof Instant
     }
 
-    void "monthValueConverter binds a month number, as grails.converters.JSON and JSON views render a Month"() {
+    void "monthValueConverter binds a month number, as Spring Boot renders a Month"() {
         def converter = config.monthValueConverter()
 
         expect:
