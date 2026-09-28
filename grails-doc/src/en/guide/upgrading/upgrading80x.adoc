@@ -4207,7 +4207,8 @@ Review these where an application or its clients read them:
 
 | `java.sql.Time`
 | `"2025-10-08T07:48:46.407Z"`, the UTC instant, which does not bind back to a `java.sql.Time`
-| `"01:48:46"`, from `Time#toString()` in the JVM default time zone, which binds back to the same `java.sql.Time`
+| `"01:48:46"`, from `Time#toString()` in the JVM default time zone, which binds back to the same time of day, to the
+second, as with Spring Boot
 
 | A `Date`, `Calendar`, `java.sql` date type or `ZonedDateTime` map key
 | the key's `toString()`, such as `"Wed Oct 08 01:48:46 MDT 2025"`
