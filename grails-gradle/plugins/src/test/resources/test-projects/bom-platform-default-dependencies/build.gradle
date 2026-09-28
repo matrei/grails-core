@@ -15,6 +15,13 @@ grails {
     bom = 'lazy-bom'
 }
 
+bomPropertyOverrides {
+    autoDetect = providers.gradleProperty('autoDetect').map { it.toBoolean() }.orElse(true)
+    if (providers.gradleProperty('explicitBom').getOrElse('false').toBoolean()) {
+        bom "org.apache.grails:lazy-bom:$grailsVersion"
+    }
+}
+
 // Gradle's jacoco plugin populates jacocoAgent and jacocoAnt through defaultDependencies, which
 // only fire while a configuration holds no dependencies at all (gradle/gradle#11209). The tool
 // version deliberately exists only in the local maven-repo.
@@ -42,6 +49,30 @@ dependencies {
     managed 'org.example:managed-lib'
 }
 
+// Runs after Grails registers its configureEach callback. create() adds the configuration to
+// the container before its closure sets the final role, unlike the role-specific factory APIs.
+afterEvaluate {
+    def lateResolvable = configurations.create('lateResolvable') {
+        canBeDeclared = false
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    def lateDeclarable = configurations.create('lateDeclarable') {
+        canBeConsumed = false
+        canBeResolved = true
+        defaultDependencies { deps ->
+            deps.add(project.dependencies.create('org.example:lazy-tool:1.0.0'))
+        }
+    }
+    tasks.register('inspectLateConfigurations') {
+        doLast {
+            println "LATE_RESOLVABLE_RESOLVED=${resolvedModules(lateResolvable)}"
+            println "LATE_RESOLVABLE_HAS_BOM=${lateResolvable.incoming.dependencies.any { it.name == 'lazy-bom' }}"
+            println "LATE_DECLARABLE_RESOLVED=${resolvedModules(lateDeclarable)}"
+        }
+    }
+}
+
 tasks.register('inspectDefaultDependencies') {
     def jacocoAgent = configurations.jacocoAgent
     def jacocoAnt = configurations.jacocoAnt
@@ -62,6 +93,7 @@ tasks.register('inspectDefaultDependencies') {
         println "PROFILE_HAS_BOM=${profile.incoming.dependencies.any(isLazyBom)}"
         println "LAZY_TOOL_HAS_BOM=${lazyTool.incoming.dependencies.any(isLazyBom)}"
         println "JACOCO_AGENT_HAS_BOM=${jacocoAgent.incoming.dependencies.any(isLazyBom)}"
+        println "JACOCO_ANT_HAS_BOM=${jacocoAnt.incoming.dependencies.any(isLazyBom)}"
     }
 }
 

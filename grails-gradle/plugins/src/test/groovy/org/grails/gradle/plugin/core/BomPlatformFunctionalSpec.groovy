@@ -80,9 +80,11 @@ class BomPlatformFunctionalSpec extends GradleSpecification {
         when:
         def result = executeTask('inspectDefaultDependencies')
 
-        then: "the jacoco plugin's defaults still resolve alongside the platform (#16335)"
-        result.output.contains('JACOCO_AGENT_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.jacoco:org.jacoco.agent:0.0.1-test]')
-        result.output.contains('JACOCO_ANT_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.jacoco:org.jacoco.ant:0.0.1-test]')
+        then: "the jacoco plugin's defaults resolve without the application platform on its tool classpaths (#16335)"
+        result.output.contains('JACOCO_AGENT_RESOLVED=[org.jacoco:org.jacoco.agent:0.0.1-test]')
+        result.output.contains('JACOCO_ANT_RESOLVED=[org.jacoco:org.jacoco.ant:0.0.1-test]')
+        result.output.contains('JACOCO_AGENT_HAS_BOM=false')
+        result.output.contains('JACOCO_ANT_HAS_BOM=false')
 
         and: 'so do the defaults of any other configuration populated through defaultDependencies'
         result.output.contains('LAZY_TOOL_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.example:lazy-tool:1.0.0]')
@@ -94,6 +96,40 @@ class BomPlatformFunctionalSpec extends GradleSpecification {
 
         and: 'the platform still manages versions on configurations declared by the build'
         result.output.contains('MANAGED_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.example:managed-lib:1.0.0]')
+    }
+
+    def "late-created configurations receive the platform only if their final role allows dependencies"() {
+        given:
+        setupTestResourceProject('bom-platform-default-dependencies')
+
+        when:
+        def result = executeTask('inspectLateConfigurations', ['--warning-mode=fail'])
+
+        then: 'a configuration made non-declarable in its create closure resolves without an injected dependency'
+        result.output.contains('LATE_RESOLVABLE_RESOLVED=[]')
+        result.output.contains('LATE_RESOLVABLE_HAS_BOM=false')
+
+        and: 'a late-created declarable configuration still gets its defaults and the platform'
+        result.output.contains('LATE_DECLARABLE_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.example:lazy-tool:1.0.0]')
+    }
+
+    def "auto-applied BOM property overrides respect autoDetect=#autoDetect and explicit registration=#explicitBom"() {
+        given:
+        setupTestResourceProject('bom-platform-default-dependencies')
+
+        when:
+        def result = executeTask('inspectDefaultDependencies', [
+                "-PautoDetect=$autoDetect" as String, "-PexplicitBom=$explicitBom" as String, '-Pmanaged-lib.version=2.0.0'
+        ])
+
+        then: 'the platform always applies, but property overrides require automatic detection or explicit registration'
+        result.output.contains("MANAGED_RESOLVED=[org.apache.grails:lazy-bom:1.0-lazy, org.example:managed-lib:$expectedVersion]")
+
+        where:
+        autoDetect | explicitBom | expectedVersion
+        true       | false       | '2.0.0'
+        false      | false       | '1.0.0'
+        false      | true        | '2.0.0'
     }
 
     def "an auto-applied Micronaut BOM variant satisfies the enforcedPlatform validation"() {

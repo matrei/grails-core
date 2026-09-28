@@ -506,13 +506,14 @@ ${importStatements}
      *   <li><strong>BOM import</strong>: the BOM selected by {@code grails.bom}
      *       (default {@code grails-bom}) is contributed as a Gradle {@code platform()}
      *       dependency - or an {@code enforcedPlatform()} for the Micronaut variants -
-     *       to every declarable configuration, mirroring the global behaviour Spring
+     *       to every eligible declarable configuration, mirroring the global behaviour Spring
      *       DM provided via {@code configurations.all() + resolutionStrategy.eachDependency()}.
      *       The platform is contributed lazily, through {@link Configuration#withDependencies},
      *       when a configuration's dependencies are first observed. It therefore never counts
      *       against the {@link Configuration#defaultDependencies} that other plugins use to
-     *       populate an otherwise empty configuration on demand (Gradle's own
-     *       {@code jacocoAgent}, this plugin's {@code profile} configuration, ...).
+     *       populate an otherwise empty configuration on demand (such as this plugin's
+     *       {@code profile} configuration). Dedicated tool and annotation-processor
+     *       classpaths, including {@code jacocoAgent} and {@code jacocoAnt}, are excluded.
      *       Exactly one Grails BOM is ever applied; the BOMs are split by integration
      *       (default / hibernate / micronaut), so the plugin never layers two of them.</li>
      *   <li><strong>Property overrides</strong>: the BOM-agnostic
@@ -592,8 +593,8 @@ ${importStatements}
             // defaultDependencies actions first - and only while the configuration holds no
             // dependencies at all - then the withDependencies actions. A platform added eagerly
             // counts as a declared dependency and silently disables the defaults other plugins
-            // rely on, such as the jacoco plugin's jacocoAgent/jacocoAnt or this plugin's own
-            // profile configuration (#16335). Registering through configureEach also covers
+            // rely on, such as this plugin's own profile configuration (#16335).
+            // Registering through configureEach also covers
             // configurations that plugins create after this callback has run.
             DependencyHandler dependencyHandler = project.dependencies
             project.configurations.configureEach { Configuration configuration ->
@@ -601,7 +602,8 @@ ${importStatements}
                     return
                 }
                 configuration.withDependencies { DependencySet dependencies ->
-                    if (declaresGrailsBom(dependencies)) {
+                    // A create() configuration can change role after configureEach runs.
+                    if (!configuration.canBeDeclared || declaresGrailsBom(dependencies)) {
                         return
                     }
                     dependencies.add(enforced ?
@@ -769,6 +771,7 @@ ${importStatements}
     private static boolean isExcludedFromBomPlatform(String name) {
         name == 'checkstyle' || name == 'codenarc' || name == 'pmd' ||
                 name == 'spotbugs' || name == 'spotbugsPlugins' ||
+                name == 'jacocoAgent' || name == 'jacocoAnt' ||
                 name == 'annotationProcessor' || name.endsWith('AnnotationProcessor')
     }
 

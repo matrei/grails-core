@@ -8,12 +8,16 @@
     <version>1.0-lazy</version>
     <packaging>pom</packaging>
 
+    <properties>
+        <managed-lib.version>1.0.0</managed-lib.version>
+    </properties>
+
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>org.example</groupId>
                 <artifactId>managed-lib</artifactId>
-                <version>1.0.0</version>
+                <version>${managed-lib.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
