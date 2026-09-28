@@ -4222,6 +4222,12 @@ Review these where an application or its clients read them:
 | `"2025-10-08T07:48:46+0000"`
 | `"2025-10-08T07:48:46.407Z"`, as any other `Date` value
 
+| A `Date` or `Calendar` in JSON views with a configured `grails.views.json.generator.timeZone` other than `GMT`
+| the offset in hours only, such as `"2025-10-08T03:48:46.407-04"`, and `"2025-10-08T13:18:46.407+05"` for
+`Asia/Kolkata`, which names an instant 30 minutes off
+| the offset in hours and minutes, such as `"2025-10-08T03:48:46.407-04:00"` and `"2025-10-08T13:18:46.407+05:30"`, as
+Spring Boot writes them; the default date format is now `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`
+
 | A `Date` rendered by `grails.converters.XML`
 | `2025-10-08 01:48:46.407 MDT`
 | `2025-10-08T01:48:46.407-06:00`, an ISO-8601 date and time with the offset of the JVM default time zone
@@ -4320,8 +4326,7 @@ Spring Boot) and for enums that override `toString()`, such as `java.time.tempor
 
 NOTE: An `OffsetTime` keeps its seconds and writes a fraction of a second with only the digits it needs, such as
 `"03:00:00-03:00"`, as JSON views have written it since Grails 7, where Spring Boot writes `"03:00-03:00"`. JSON views
-write a `Date` in the configured `timeZone` with the offset in hours, such as `"2025-10-08T03:48:46.407-04"`, where
-Spring Boot writes `"-04:00"`, and write a year before 1 AD or after 9999 as Grails 7 did.
+write a year before 1 AD or after 9999 as Grails 7 did.
 
 NOTE: The HAL renderer, `grails.rest.render.hal.HalJsonRenderer` for `application/hal+json`, writes values with Groovy's
 default JSON generator and is not changed.

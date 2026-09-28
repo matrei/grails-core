@@ -186,26 +186,27 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         result.jsonText == jackson.writeValueAsString(map)
     }
 
-    void "a configured timeZone writes Date and Calendar values and keys with the date format in that zone, as Grails 7 did"() {
+    void "a configured timeZone writes Date and Calendar values and keys in that zone with its offset, as Spring Boot does"() {
         given:
+        def zone = TimeZone.getTimeZone(zoneId)
         def generator = generator(new JsonViewGeneratorConfiguration(timeZone: zoneId))
-        def time = Time.valueOf('01:48:46')
         def values = [
                 date: Date.from(instant),
                 calendar: GregorianCalendar.from(instant.atZone(ZoneId.of('Asia/Tokyo'))),
-                time: time,
-                keys: [(Date.from(instant)): 'date', (time): 'time']
+                time: Time.valueOf('01:48:46'),
+                keys: [(Date.from(instant)): 'date', (Time.valueOf('01:48:46')): 'time']
         ]
-        def format = new SimpleDateFormat(/yyyy-MM-dd'T'HH:mm:ss.SSSX/).tap { timeZone = TimeZone.getTimeZone(zoneId) }
 
         expect:
-        generator.toJson(values) == "{\"date\":\"${written}\",\"calendar\":\"${written}\",\"time\":\"01:48:46\"," +
-                "\"keys\":{\"${written}\":\"date\",\"${format.format(time)}\":\"time\"}}"
+        generator.toJson(values) == JsonMapper.builder().defaultTimeZone(zone).build().writeValueAsString(values)
+        generator.toJson([date: Date.from(instant)]) == "{\"date\":\"${written}\"}"
 
-        where:
+        where: 'zones with a whole number of hours, and with a fraction of an hour, in their offset'
         zoneId             | written
         'GMT'              | '2025-10-08T07:48:46.407Z'
-        'America/New_York' | '2025-10-08T03:48:46.407-04'
+        'America/New_York' | '2025-10-08T03:48:46.407-04:00'
+        'Asia/Kolkata'     | '2025-10-08T13:18:46.407+05:30'
+        'Asia/Kathmandu'   | '2025-10-08T13:33:46.407+05:45'
     }
 
     void "a configured dateFormat applies to Date values and keys but not to java.sql.Time values, as in Spring Boot"() {
