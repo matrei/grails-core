@@ -20,6 +20,9 @@ package grails.openapi
 
 import groovy.json.JsonSlurper
 
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.enums.ParameterIn
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema as SchemaAnnotation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -32,7 +35,7 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 /**
- * What the {@code @Schema} of a property says of it, as the written document says it.
+ * What the {@code @Schema} of a property, or of a parameter, says of it, as the written document says it.
  */
 class AnnotatedPropertySpec extends Specification {
 
@@ -134,6 +137,39 @@ class AnnotatedPropertySpec extends Specification {
 
         and: 'a reference both its annotation and its constraint make nullable is described once'
         nullableReference(version, stop.get('properties').depot, [:])
+
+        where:
+        version << ['openapi_3_0', 'openapi_3_1']
+    }
+
+    @Unroll
+    void 'describes a parameter an annotation adds as the type its schema declares in OpenAPI #version'() {
+        when:
+        Map operation = written(version, [TariffController]) {
+            '/tariff/page'(controller: 'tariff', action: 'page')
+        }.paths['/tariff/page'].get
+
+        then: 'rather than as a string'
+        with(operation.parameters.find { it.name == 'band' }.schema) {
+            type == 'integer'
+            format == 'int32'
+        }
+        operation.parameters.find { it.name == 'within' }.schema.items == [type: 'integer', format: 'int64']
+
+        where:
+        version << ['openapi_3_0', 'openapi_3_1']
+    }
+
+    @Unroll
+    void 'writes the values a parameter @Schema declares as the type they describe in OpenAPI #version'() {
+        when:
+        Map operation = written(version, [TariffController]) {
+            '/tariff/page'(controller: 'tariff', action: 'page')
+        }.paths['/tariff/page'].get
+
+        then:
+        operation.parameters.find { it.name == 'band' }.schema ==
+                [type: 'integer', format: 'int32', enum: [1, 2], default: 1]
 
         where:
         version << ['openapi_3_0', 'openapi_3_1']
@@ -258,4 +294,14 @@ class RouteController {
 
     @ApiResponse(responseCode = '200', content = @Content(schema = @SchemaAnnotation(implementation = RouteLeg)))
     def leg() { }
+}
+
+@Artefact('Controller')
+class TariffController {
+
+    @Parameter(name = 'band', in = ParameterIn.QUERY,
+            schema = @SchemaAnnotation(type = 'integer', format = 'int32', allowableValues = ['1', '2'], defaultValue = '1'))
+    @Parameter(name = 'within', in = ParameterIn.QUERY,
+            array = @ArraySchema(schema = @SchemaAnnotation(type = 'integer', format = 'int64')))
+    def page() { }
 }

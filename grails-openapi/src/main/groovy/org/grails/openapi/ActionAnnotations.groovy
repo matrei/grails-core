@@ -29,6 +29,7 @@ import groovy.transform.CompileStatic
 
 import io.swagger.v3.core.util.AnnotationsUtils
 import io.swagger.v3.core.util.ParameterProcessor
+import io.swagger.v3.core.util.PrimitiveType
 import io.swagger.v3.oas.annotations.ExternalDocumentation as ExternalDocumentationAnnotation
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation as OperationAnnotation
@@ -66,6 +67,8 @@ import grails.web.RequestParameter
 class ActionAnnotations {
 
     static final String DEFAULT_MEDIA_TYPE = 'application/json'
+
+    private static final String NULL_TYPE = 'null'
 
     private static final String[] NO_MEDIA_TYPES = new String[0]
     private static final String[] DEFAULT_MEDIA_TYPES = [DEFAULT_MEDIA_TYPE] as String[]
@@ -412,18 +415,30 @@ class ActionAnnotations {
 
     /**
      * The type a parameter declared on the method rather than on a method parameter is described
-     * as: the implementation its schema names, or a string.
+     * as: the implementation its schema names, or the type it names, such as {@code integer}, or a
+     * string. The array its array schema declares is an array of either.
      */
     private static Class<?> declaredType(ParameterAnnotation declared) {
-        Class<?> implementation = declared.schema().implementation()
-        if (implementation == null || implementation == Void) {
-            implementation = declared.array().schema().implementation()
-            if (implementation != null && implementation != Void) {
-                return Array.newInstance(implementation, 0).getClass()
-            }
-            return String
+        Class<?> type = schemaType(declared.schema())
+        if (type != null) {
+            return type
         }
-        implementation
+        Class<?> items = schemaType(declared.array().schema())
+        items != null ? Array.newInstance(items, 0).getClass() : String
+    }
+
+    /**
+     * The class swagger-core describes a schema annotation as: the implementation it names, or the
+     * class of the type and format it names.
+     */
+    private static Class<?> schemaType(SchemaAnnotation schema) {
+        Class<?> implementation = schema.implementation()
+        if (implementation != null && implementation != Void) {
+            return implementation
+        }
+        String type = schema.type() ?: schema.types().find { String it -> it != NULL_TYPE }
+        PrimitiveType primitive = type ? (PrimitiveType.fromTypeAndFormat(type, schema.format()) ?: PrimitiveType.fromName(type)) : null
+        primitive?.keyClass
     }
 
     private static String parameterLocation(ParameterAnnotation declared) {
