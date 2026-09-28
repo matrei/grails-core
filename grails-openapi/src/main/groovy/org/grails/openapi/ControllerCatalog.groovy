@@ -139,6 +139,17 @@ class ControllerCatalog {
     }
 
     /**
+     * Whether an action is described by the part it plays in the resource its controller serves:
+     * it is one RestfulController declares, of a resource controller, whether the controller
+     * inherits it, overrides it, or, as a controller generated for a REST application does, declares
+     * it itself. A generated controller answers such an action with the statuses, bodies and paging
+     * RestfulController does. Any other action is described as any controller's is.
+     */
+    boolean isResourceAction(GrailsControllerClass controller, String actionName) {
+        isResourceController(controller) && RestfulControllerActions.isAction(actionName)
+    }
+
+    /**
      * The type a resource controller serves: the type argument a RestfulController declares, or
      * the resource it was constructed with, or the domain class a generated controller binds.
      */
@@ -165,11 +176,11 @@ class ControllerCatalog {
 
     /**
      * Whether an action addresses one resource, and so takes the identifier a mapping may leave
-     * optional: the actions of a resource controller that address one, or an action declaring an
-     * {@code id} parameter.
+     * optional: the resource actions that address one, or an action declaring an {@code id}
+     * parameter.
      */
     boolean takesId(GrailsControllerClass controller, String actionName) {
-        if (isResourceController(controller)) {
+        if (isResourceAction(controller, actionName)) {
             return RestfulControllerActions.takesId(actionName)
         }
         Method action = ActionAnnotations.actionMethod(controller.clazz, actionName)

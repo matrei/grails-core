@@ -522,8 +522,9 @@ class OrdersController {
 }
 ----
 
-Where an action takes no command object, as on a `RestfulController`, the body is the resource the
-controller serves. A `patch` binds only what it is sent, so its body is a copy of the resource's
+Where one of the actions `RestfulController` declares takes no command object, the body is the
+resource the controller serves, whether the controller inherits the action or overrides it. Any other
+action binds a body only where it takes a command object or declares one. A `patch` binds only what it is sent, so its body is a copy of the resource's
 schema, named for it with a `Patch` suffix, that requires nothing. A body with a property a file is
 bound to, a `MultipartFile` or a `Part`, is described as `multipart/form-data`, with the file as a
 binary string. An action that binds something
@@ -531,8 +532,10 @@ else declares it with `@RequestBody`, which replaces what is derived.
 
 ==== Responses
 
-A `RestfulController` action is described from what the controller does, so the statuses are the ones
-it answers with rather than a uniform `200`:
+The actions `RestfulController` declares are described by the part each plays in the resource, so
+the statuses are the ones it answers with rather than a uniform `200`. That holds for an action the
+controller overrides as much as for one it inherits: an override is how an action is annotated, and
+it still lists, shows, creates, updates or deletes the resource:
 
 [cols="1,1,2"]
 |===
@@ -545,6 +548,9 @@ it answers with rather than a uniform `200`:
 | `update`, `patch` | 200, 404, 422 | the resource
 | `delete` | 204, 404 | none
 |===
+
+Any other action of the controller, such as a `search`, is described as any controller's action is:
+a `200`, a `404` where its path has a variable, and whatever its annotations declare.
 
 A `422` answers with the validation errors Grails renders for a request that cannot be bound,
 described once as the `ValidationErrors` schema, or as `grails.validation.ValidationErrors`, after
@@ -610,6 +616,21 @@ on it:
 | `sort` | the property to sort by
 | `order` | `asc` or `desc`
 |===
+
+An `index` the controller overrides is described with them too. One that does not page withdraws
+them, as it would any parameter derived for it:
+
+[source,groovy]
+----
+@Parameter(name = 'max', hidden = true)
+@Parameter(name = 'offset', hidden = true)
+@Parameter(name = 'sort', hidden = true)
+@Parameter(name = 'order', hidden = true)
+@Override
+Object index(Integer max) {
+    respond bookService.featured()
+}
+----
 
 The identifier an operation of a `RestfulController` addresses is described with the type the
 domain class declares for it:
@@ -785,9 +806,10 @@ generates for a REST application declare `responseFormats`, so both are describe
 generates for a web application render views and are not.
 
 A controller that is not a `RestfulController` but whose `save` and `update` actions bind the same
-domain class, as the controllers generated for a REST application do, is described the way a
-`RestfulController` of that class is: with its statuses, the domain class as its responses and
-bodies, and the paging of its listing.
+domain class, as the controllers generated for a REST application do, answers the actions
+`RestfulController` declares as a `RestfulController` of that class does, so they are described the
+same way: with its statuses, the domain class as its responses and bodies, and the paging of its
+listing. Its other actions are described as any controller's are.
 
 ==== Limitations
 

@@ -587,8 +587,8 @@ class GrailsOpenApiGenerator {
         private Operation buildOperation(UrlMapping mapping, String path, PathItem.HttpMethod method,
                                          GrailsControllerClass controller, Class<?> controllerType,
                                          String controllerName, String actionName, String operationId) {
-            boolean restful = controllers.isResourceController(controller)
-            Class<?> resourceType = restful ? controllers.resourceType(controller) : null
+            Class<?> resourceType = controllers.isResourceController(controller) ? controllers.resourceType(controller) : null
+            boolean resourceAction = actionName && controllers.isResourceAction(controller, actionName)
             List<String> pathNames = UrlMappingPaths.templateVariables(path)
 
             Operation operation = new Operation()
@@ -597,7 +597,7 @@ class GrailsOpenApiGenerator {
             operation.setOperationId(operationId)
 
             parameters.addPathParameters(operation, mapping, pathNames, controllerType, actionName, resourceType)
-            if (restful && actionName && RestfulControllerActions.paginates(actionName)) {
+            if (resourceAction && RestfulControllerActions.paginates(actionName)) {
                 OperationParameters.addPagingParameters(operation)
             }
             parameters.addRequestParameters(operation, controllerType, actionName, pathNames)
@@ -605,7 +605,7 @@ class GrailsOpenApiGenerator {
                 parameters.addCommandParameters(operation, controllerType, actionName, pathNames)
             }
 
-            if (restful && actionName) {
+            if (resourceAction) {
                 boolean locates = controllerType != null && RestfulController.isAssignableFrom(controllerType)
                 operation.setResponses(responses.restful(controller, resourceType, actionName, !pathNames.isEmpty(),
                         mediaTypes.responseMediaTypes(controller, actionName), locates))
@@ -615,7 +615,7 @@ class GrailsOpenApiGenerator {
             }
 
             if (method.name() in BODY_METHODS && !ActionAnnotations.declaresRequestBody(controllerType, actionName)) {
-                Schema<?> body = requestBodySchema(controllerType, actionName, resourceType, method)
+                Schema<?> body = requestBodySchema(controllerType, actionName, resourceAction ? resourceType : null, method)
                 if (body != null) {
                     Map<String, Boolean> bodyTypes = mediaTypes.bodyMediaTypes(controller, controllerType, actionName)
                             .collectEntries { String mediaType -> [(mediaType): true] } as Map<String, Boolean>
@@ -627,7 +627,7 @@ class GrailsOpenApiGenerator {
 
         /**
          * Whether an operation binds a body: one it declares, the command object its action takes,
-         * or the resource a RestfulController serves.
+         * or the resource a resource action binds.
          */
         private boolean bindsBody(PathItem.HttpMethod method, GrailsControllerClass controller,
                                   Class<?> controllerType, String actionName) {
@@ -638,12 +638,12 @@ class GrailsOpenApiGenerator {
                     || ActionAnnotations.commandObjectType(controllerType, actionName) != null) {
                 return true
             }
-            controllers.isResourceController(controller) && controllers.resourceType(controller) != null
+            controllers.isResourceAction(controller, actionName) && controllers.resourceType(controller) != null
         }
 
         /**
-         * The body an action binds: the command object it takes, in preference to the resource its
-         * controller serves. A patch binds only what it is sent, so nothing is required of it.
+         * The body an action binds: the command object it takes, in preference to the resource a
+         * resource action binds. A patch binds only what it is sent, so nothing is required of it.
          */
         private Schema<?> requestBodySchema(Class<?> controllerType, String actionName, Class<?> resourceType,
                                             PathItem.HttpMethod method) {

@@ -82,7 +82,7 @@ class MediaTypes {
      */
     List<String> bodyMediaTypes(GrailsControllerClass controller, Class<?> controllerType, String actionName) {
         Class<?> bound = ActionAnnotations.commandObjectType(controllerType, actionName)
-                ?: (controllers.isResourceController(controller) ? controllers.resourceType(controller) : null)
+                ?: (controllers.isResourceAction(controller, actionName) ? controllers.resourceType(controller) : null)
         if (GrailsModelConverter.hasFileProperty(bound)) {
             return [MULTIPART_MEDIA_TYPE]
         }

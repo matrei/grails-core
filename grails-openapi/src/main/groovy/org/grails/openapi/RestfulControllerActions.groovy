@@ -46,6 +46,12 @@ class RestfulControllerActions {
 
     private static final Set<String> COLLECTION_ACTIONS = ['index'].toSet().asImmutable()
 
+    /**
+     * The actions RestfulController declares.
+     */
+    private static final Set<String> ACTIONS = ['index', 'show', 'create', 'save', 'edit', 'update', 'patch', 'delete']
+            .toSet().asImmutable()
+
     private static final Set<String> VALIDATING_ACTIONS = ['save', 'update', 'patch'].toSet().asImmutable()
 
     /**
@@ -129,6 +135,14 @@ class RestfulControllerActions {
      */
     static boolean paginates(String actionName) {
         actionName in COLLECTION_ACTIONS
+    }
+
+    /**
+     * Whether RestfulController declares an action of the name, which a resource controller
+     * answers by the part it plays in the resource: listing it, showing one, creating one, and so on.
+     */
+    static boolean isAction(String actionName) {
+        actionName in ACTIONS
     }
 
     static boolean isFormAction(String actionName) {
