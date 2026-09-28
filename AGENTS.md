@@ -77,7 +77,7 @@ export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4G"
 
 | Skill | Path | Use For |
 |-------|------|---------|
-| **grails-developer** | `.agents/skills/grails-developer/SKILL.md` | Current Grails apps, GORM, controllers, views |
+| **grails-developer** | `.agents/skills/grails-developer/SKILL.md` | Grails apps, GORM, controllers, views |
 | **groovy-developer** | `.agents/skills/groovy-developer/SKILL.md` | Groovy 5 syntax, closures, DSLs, Spock |
 | **gradle-developer** | `.agents/skills/gradle-developer/SKILL.md` | Gradle 9 builds, BOM/platforms, convention plugins, wrappers |
 | **grails-8-upgrade** | `.agents/skills/grails-8-upgrade/SKILL.md` | Upgrading Grails applications from 7.x to 8 |

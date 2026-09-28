@@ -29,20 +29,20 @@ Activate this skill when:
 
 ## Primary Sources
 
-Use these repository docs as the source of truth before changing an application:
+Use the published Grails documentation as the source of truth before changing an application. The URLs below use `<version>`, which stands for the Grails 8 version the application is upgrading to, such as the `grailsVersion` in its `gradle.properties`; use `snapshot` for a snapshot version.
 
-| Path | Use for |
-|------|---------|
-| `grails-doc/src/en/guide/upgrading/upgrading80x.adoc` | Main Grails 7 to Grails 8 upgrade guide |
-| `grails-doc/src/en/guide/introduction/whatsNew.adoc` | Grails 8 feature and platform overview |
-| `grails-doc/src/en/guide/introduction/whatsNew/dependencyUpgrades.adoc` | Current platform dependency baseline |
-| `grails-doc/src/en/ref/Dependency Versions.adoc` | BOM variants and dependency-version entry points |
-| `grails-doc/src/en/guide/conf/micronaut.adoc` | Micronaut BOM usage, Hibernate-specific Micronaut BOMs, and JDK 25 requirements |
-| `grails-doc/src/en/guide/theWebLayer/contentNegotiation.adoc` | MIME defaults and Accept header behavior |
-| `grails-data-hibernate7/docs/src/docs/asciidoc/introduction/upgradeNotes.adoc` | Hibernate 7 GORM query and tenant-schema notes |
-| `grails-data-hibernate7/dbmigration/README.md` | Database migration plugin version line for Grails 8 and Hibernate 7 |
+| URL | Use for |
+|-----|---------|
+| `https://grails.apache.org/docs/<version>/guide/upgrading.html#upgrading80x` | Main Grails 7 to Grails 8 upgrade guide |
+| `https://grails.apache.org/docs/<version>/guide/introduction.html#whatsNew` | Grails 8 feature and platform overview |
+| `https://grails.apache.org/docs/<version>/guide/introduction.html#dependencyUpgrades` | Platform dependency baseline |
+| `https://grails.apache.org/docs/<version>/ref/Versions/Grails%20BOM.html` | Dependency versions of the Grails BOM, with links to the Hibernate 5, Hibernate 7, and Neo4j BOM variants |
+| `https://grails.apache.org/docs/<version>/guide/upgrading.html#micronaut-integration` | Micronaut integration, which points to the Grails Micronaut project's own upgrade documentation |
+| `https://grails.apache.org/docs/<version>/guide/theWebLayer.html#contentNegotiation` | MIME defaults and Accept header behavior |
+| `https://grails.apache.org/docs/<version>/grails-data/hibernate7/manual/index.html#upgradeNotes` | Hibernate 7 GORM query and tenant-schema notes |
+| `https://grails.apache.org/docs/<version>/grails-data/hibernate7/manual/index.html#databaseMigration` | Database migration plugin for Hibernate 7, which uses the same version as Grails |
 
-When checking published docs, use explicit Grails 8 URLs such as `https://grails.apache.org/docs/8.0.0-M1/guide/upgrading.html` or `https://grails.apache.org/docs/snapshot/guide/upgrading.html`. Do not assume `https://grails.apache.org/docs/latest/guide/upgrading.html` points at Grails 8.
+Do not assume `https://grails.apache.org/docs/latest/` points at Grails 8.
 
 ## Upgrade Baseline
 
@@ -50,7 +50,7 @@ Start every Grails 8 upgrade by checking these platform requirements:
 
 - Use JDK 21 or later to build and run ordinary Grails 8 applications.
 - Use JDK 25 or later if the application uses `grails-micronaut`, `micronaut-http-client`, or other Micronaut features.
-- Update the Gradle wrapper to the Grails 8 managed line. Current 8.0.x snapshot docs use Gradle 9.8.0, while milestone docs may show an earlier Gradle 9.x version.
+- Update the Gradle wrapper to the Grails 8 managed line, currently Gradle 9.8.0. The Grails 8 Gradle plugins require Gradle 9.7 or later.
 - Expect Spring Boot 4.1.x, Spring Framework 7.0.x, Spring Security 7.1.x, Spring Data 2026.0.x, Micrometer 1.17.x, Jackson 3.1.x, Tomcat 11.0.x, and Jakarta Servlet 6.1.
 - Keep using `jakarta.*` APIs. Do not reintroduce `javax.*` packages.
 - Add `runtimeOnly 'org.springframework.boot:spring-boot-properties-migrator'` temporarily during the migration, boot once, fix reported configuration properties, then remove it.
@@ -91,7 +91,11 @@ Spring Boot 4 renamed common starters:
 
 For WAR deployment to an external servlet container, replace `providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'` with `providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat-runtime'`.
 
-Undertow is not available in Grails 8 until Undertow supports Servlet 6.1. Use Tomcat or Jetty.
+Spring Boot 4 dropped `spring-boot-starter-undertow`; Grails 8 provides Undertow through the Grails Undertow plugin instead. For an application that runs on Undertow, make the build match what Grails Forge generates for `--servlet=undertow`:
+
+- Replace `spring-boot-starter-undertow` with `implementation 'org.apache.grails:grails-undertow'`, without a version; the Grails BOM manages it.
+- Do not declare `spring-boot-starter-tomcat` or `spring-boot-tomcat`; those are what Forge adds for Tomcat applications instead.
+- Keep the `server.undertow.*` properties; they continue to work. `server.undertow.max-http-post-size` now defaults to 2MB, Undertow's hardened default; set it to `-1` only if the application relied on the previous unlimited request size.
 
 Spring Retry is no longer managed by Spring Boot. If the application directly uses `@Retryable`, `@EnableRetry`, or `@Recover`, add `implementation 'org.springframework.retry:spring-retry'`.
 

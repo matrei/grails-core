@@ -138,6 +138,7 @@ tasks.named('rat') {
             'grails-gradle/**/build/**', // grails-gradle does not have a build package name so exclude any build directories
             'grails-gradle/plugins/bin/**', // generated IDE output for the Gradle plugin build
             'end-to-end/**/build/**', // its own build, so its build directories are not covered by the root exclude
+            'end-to-end/*/.agents/**', // skills the agent-skills example builds extract; gitignored build output
             'grails-forge/*/build/**', // grails-forge build directories
             'grails-forge/grails-forge-*/bin/**', // generated IDE output for Grails Forge modules
             'grails-forge/build/**', // grails-forge build directories
