@@ -97,7 +97,7 @@ application and a Spring Boot application return the same JSON for the same valu
 | ISO-8601 without a time zone, such as `"2025-10-08"`, `"01:48:46.407254"`, `"2025-10-08T01:48:46.407254"`
 
 | `OffsetDateTime`, `ZonedDateTime`, `OffsetTime`
-| ISO-8601 with the offset and without a zone ID, such as `"2025-10-08T01:48:46.407254-06:00"`, `"03:00-03:00"`
+| ISO-8601 with the offset and without a zone ID, such as `"2025-10-08T01:48:46.407254-06:00"`, `"03:00:00-03:00"`
 
 | `YearMonth`, `MonthDay`, `Duration`, `Period`, `javax.xml.datatype.Duration`
 | ISO-8601, such as `"2026-09"`, `"--09-25"`, `"PT1H30M"`, `"P1Y2M3D"`, `"P1DT2H"`
@@ -109,7 +109,9 @@ application and a Spring Boot application return the same JSON for the same valu
 | the ID, such as `"America/Sao_Paulo"` or `"-03:00"`
 |===
 
-A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its keys as those values render by default, such as
+An `OffsetTime` keeps its seconds and writes a fraction of a second with only the digits it needs, as JSON views render
+it, where Spring Boot writes `"03:00-03:00"`. A map keyed by `Date`, `Calendar` or `ZonedDateTime` values renders its
+keys as those values render by default, such as
 `"2025-10-08T07:48:46.407Z"`, also where `grails.converters.json.date` or a registered marshaller changes how the values
 render; other map keys render with their `toString()`. JSON views render dates and times the same way, and data binding
 binds a `Month` back from its number.

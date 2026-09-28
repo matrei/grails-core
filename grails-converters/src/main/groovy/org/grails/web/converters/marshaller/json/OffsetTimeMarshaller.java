@@ -19,6 +19,7 @@
 package org.grails.web.converters.marshaller.json;
 
 import java.time.OffsetTime;
+import java.time.format.DateTimeFormatter;
 
 import grails.converters.JSON;
 import org.grails.web.converters.exceptions.ConverterException;
@@ -26,8 +27,8 @@ import org.grails.web.converters.marshaller.ObjectMarshaller;
 import org.grails.web.json.JSONException;
 
 /**
- * JSON ObjectMarshaller which converts an OffsetTime to its ISO-8601 {@link OffsetTime#toString()} form
- * (e.g. {@code 03:00-03:00}), the same as Spring Boot's default Jackson rendering.
+ * JSON ObjectMarshaller which converts an OffsetTime to its {@link DateTimeFormatter#ISO_OFFSET_TIME} form
+ * (e.g. {@code 03:00:00-03:00}), the same as JSON views render it.
  *
  * @since 8.0
  */
@@ -39,7 +40,7 @@ public class OffsetTimeMarshaller implements ObjectMarshaller<JSON> {
 
     public void marshalObject(Object object, JSON converter) throws ConverterException {
         try {
-            converter.getWriter().value(object.toString());
+            converter.getWriter().value(DateTimeFormatter.ISO_OFFSET_TIME.format((OffsetTime) object));
         }
         catch (JSONException e) {
             throw new ConverterException(e);

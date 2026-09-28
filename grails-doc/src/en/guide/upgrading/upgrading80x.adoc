@@ -4184,9 +4184,9 @@ in Grails 7:
 | `{"hour":1,"minute":48,"nano":407254000,"second":46}`
 | `"01:48:46.407254"`, as JSON views already rendered it
 
-| `java.time.OffsetTime`
-| JSON views: `"03:00:00-03:00"`; `grails.converters.JSON`: an object of its properties
-| `"03:00-03:00"`, from `OffsetTime#toString()`
+| `java.time.OffsetTime` (`grails.converters.JSON`)
+| an object of its properties
+| `"03:00:00-03:00"`, as JSON views already rendered it
 
 | `java.time.Year`
 | an object of its properties, or `{}`
@@ -4238,15 +4238,9 @@ in Grails 7:
 | `"2025-10-08T07:48:46.407Z"`, as any other `Date` value
 |===
 
-JSON views no longer set a default `grails.views.json.generator.dateFormat`. When it is not set, `Date` and `Calendar`
-values and map keys are written the same way as Spring Boot writes them, in the configured
-`grails.views.json.generator.timeZone`: a UTC instant such as `"2025-10-08T07:48:46.407Z"` in the default `GMT`, and
-otherwise the local date and time with the zone's offset, such as `"2025-10-08T03:48:46.407-04:00"` for
-`America/New_York`, as Spring Boot's `spring.jackson.time-zone` does. Grails 7 wrote `"2025-10-08T03:48:46.407-04"` for
-that time zone. Setting `dateFormat` still formats `Date` and `Calendar` values with that `SimpleDateFormat` pattern, in
-the configured `timeZone` and `locale`, and now formats their map keys the same way. As with Spring Boot's
-`spring.jackson.date-format`, the pattern no longer applies to `java.sql.Time` values, which are written as
-`"01:48:46"`.
+JSON views write `Date` and `Calendar` map keys with `grails.views.json.generator.dateFormat`, in the configured
+`timeZone` and `locale`, as they write those values. As with Spring Boot's `spring.jackson.date-format`, the date format
+no longer applies to `java.sql.Time` values, which are written as `"01:48:46"`.
 
 Data binding binds a `Month` from its number, so JSON that Grails renders binds back: `9` and `"9"` bind to
 `SEPTEMBER`, as a month name still does. Grails 7 bound a number through Spring's conversion service by ordinal, so `9`
@@ -4269,7 +4263,7 @@ added in 8.0 shift those, so a marshaller registered with an explicit negative p
 different defaults. Marshallers registered with the default priority of 0, or higher, still take precedence over all
 of the defaults. A marshaller registered for `Date` or `Calendar`, like `grails.converters.json.date` set to
 `javascript`, changes how those values render with `grails.converters.JSON`, but not map keys of those types, which
-keep the form in the table above. JSON views format map keys with `dateFormat` when it is set, as described above.
+keep the form in the table above. JSON views format date map keys with `dateFormat`, as described above.
 
 NOTE: Enums other than `Month` still render by `name()`, as described in section 8, Enum Serialization Default Changed,
 while Jackson 3 writes an enum's `toString()`. The two differ only for enums that override `toString()`, such as

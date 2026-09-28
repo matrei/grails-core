@@ -109,9 +109,7 @@ class JsonViewTemplateEngine extends ResolvableGroovyTemplateEngine {
             locale = new Locale(localeData[0])
         }
 
-        if (config.dateFormat) {
-            options.dateFormat(config.dateFormat, locale)
-        }
+        options.dateFormat(config.dateFormat, locale)
         options.timezone(config.timeZone)
 
         Map<String, JsonGenerator.Converter> convertersByClass = new LinkedHashMap<>()
@@ -140,7 +138,7 @@ class JsonViewTemplateEngine extends ResolvableGroovyTemplateEngine {
             options.addConverter(it)
         }
 
-        this.generator = new JsonViewGenerator(options, !config.dateFormat)
+        this.generator = new JsonViewGenerator(options)
     }
 
     private static void registerConverters(Iterable<? extends JsonGenerator.Converter> source,

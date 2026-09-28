@@ -88,7 +88,7 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
                 zoneOffset: ZoneOffset.ofHours(-3), timeZone: TimeZone.getTimeZone('America/Sao_Paulo'),
                 xmlCalendar: DatatypeFactory.newInstance().newXMLGregorianCalendar('2025-10-08T01:48:46.407-06:00'),
                 xmlDuration: DatatypeFactory.newInstance().newDuration('P1DT2H'), localTime: LocalTime.of(3, 0),
-                offsetTime: OffsetTime.parse('03:00-03:00'), time: Time.valueOf('01:48:46'),
+                offsetTime: OffsetTime.parse('01:48:46-06:00'), time: Time.valueOf('01:48:46'),
                 dates: [Date.from(instant), Date.from(Instant.parse('2026-09-25T03:00:00Z'))])
 
         when:
@@ -157,22 +157,26 @@ class DateTimeHelperRenderingSpec extends Specification implements JsonViewUnitT
         result.jsonText == jackson.writeValueAsString(map)
     }
 
-    void "a configured timeZone writes Date and Calendar values and keys in that zone, as Spring Boot does"() {
+    void "a configured timeZone writes Date and Calendar values and keys with the date format in that zone, as Grails 7 did"() {
         given:
-        def zone = TimeZone.getTimeZone(zoneId)
         def generator = generator(new JsonViewGeneratorConfiguration(timeZone: zoneId))
+        def time = Time.valueOf('01:48:46')
         def values = [
                 date: Date.from(instant),
                 calendar: GregorianCalendar.from(instant.atZone(ZoneId.of('Asia/Tokyo'))),
-                time: Time.valueOf('01:48:46'),
-                keys: [(Date.from(instant)): 'date', (Time.valueOf('01:48:46')): 'time']
+                time: time,
+                keys: [(Date.from(instant)): 'date', (time): 'time']
         ]
+        def format = new SimpleDateFormat(/yyyy-MM-dd'T'HH:mm:ss.SSSX/).tap { timeZone = TimeZone.getTimeZone(zoneId) }
 
         expect:
-        generator.toJson(values) == JsonMapper.builder().defaultTimeZone(zone).build().writeValueAsString(values)
+        generator.toJson(values) == "{\"date\":\"${written}\",\"calendar\":\"${written}\",\"time\":\"01:48:46\"," +
+                "\"keys\":{\"${written}\":\"date\",\"${format.format(time)}\":\"time\"}}"
 
         where:
-        zoneId << ['GMT', 'America/New_York', 'Asia/Kolkata']
+        zoneId             | written
+        'GMT'              | '2025-10-08T07:48:46.407Z'
+        'America/New_York' | '2025-10-08T03:48:46.407-04'
     }
 
     void "a configured dateFormat applies to Date values and keys but not to java.sql.Time values, as in Spring Boot"() {

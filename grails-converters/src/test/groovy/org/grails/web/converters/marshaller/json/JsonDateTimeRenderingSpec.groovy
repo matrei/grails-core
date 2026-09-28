@@ -89,7 +89,9 @@ class JsonDateTimeRenderingSpec extends Specification {
         LocalTime.of(3, 0)                                               || '"03:00:00"'
         LocalDateTime.of(2025, 10, 8, 1, 48, 46, 407254000)              || '"2025-10-08T01:48:46.407254"'
         OffsetDateTime.parse('2025-10-08T01:48:46.407254-06:00')         || '"2025-10-08T01:48:46.407254-06:00"'
-        OffsetTime.parse('03:00-03:00')                                  || '"03:00-03:00"'
+        OffsetTime.parse('03:00-03:00')                                  || '"03:00:00-03:00"'
+        OffsetTime.parse('03:00:00.5+05:30')                             || '"03:00:00.5+05:30"'
+        OffsetTime.parse('01:48:46.407254-06:00')                        || '"01:48:46.407254-06:00"'
         ZonedDateTime.parse('2026-09-25T00:00-03:00[America/Sao_Paulo]') || '"2026-09-25T00:00:00-03:00"'
         Year.of(2026)                                                    || '2026'
         YearMonth.of(2026, 9)                                            || '"2026-09"'
@@ -112,7 +114,7 @@ class JsonDateTimeRenderingSpec extends Specification {
         new JSON(map).toString() == jackson.writeValueAsString(map)
 
         where:
-        value << DateTimeValues.all()
+        value << DateTimeValues.all().findAll { !DateTimeValues.offsetTimeDiffers(it) }
         description = value instanceof Map ? "${value.keySet().first().class.simpleName} map key" : value.class.simpleName
     }
 

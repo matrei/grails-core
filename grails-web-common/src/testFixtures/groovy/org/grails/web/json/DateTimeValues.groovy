@@ -36,6 +36,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 import javax.xml.datatype.DatatypeFactory
 
@@ -125,6 +126,16 @@ class DateTimeValues {
                 saoPaulo,
         ]
         values + keys.collect { [(it): 'value'] }
+    }
+
+    /**
+     * Whether Grails writes the value differently than Spring Boot: an {@link OffsetTime} in its
+     * {@link DateTimeFormatter#ISO_OFFSET_TIME} form, as JSON views have written it since Grails 7, where Jackson
+     * writes {@link OffsetTime#toString()}, which leaves out zero seconds and writes a fraction in groups of three
+     * digits.
+     */
+    static boolean offsetTimeDiffers(Object value) {
+        value instanceof OffsetTime && DateTimeFormatter.ISO_OFFSET_TIME.format((OffsetTime) value) != value.toString()
     }
 
     private static Date bcDate(int year, int month, int day) {

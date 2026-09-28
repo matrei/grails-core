@@ -290,8 +290,54 @@ json {
         result.jsonText == jackson.writeValueAsString([value: value])
 
         where:
-        value << DateTimeValues.all()
+        value << DateTimeValues.all().findAll { !DateTimeValues.offsetTimeDiffers(it) && !outsideFourDigitYears(it) }
         description = value instanceof Map ? "${value.keySet().first().class.simpleName} map key" : value.class.simpleName
+    }
+
+    void "Test OffsetTime renders in its ISO_OFFSET_TIME form, as in Grails 7"() {
+        given: "A view that renders an OffsetTime"
+        String source = '''
+import java.time.OffsetTime
+
+model {
+    OffsetTime time
+}
+
+json {
+    time time
+}
+'''
+
+        expect: "the seconds are kept, and the fraction has only the digits it needs"
+        render(source, [time: OffsetTime.parse(value)]).json.time == rendered
+
+        where:
+        value                    | rendered
+        '03:00-03:00'            | '03:00:00-03:00'
+        '03:00:00.5+05:30'       | '03:00:00.5+05:30'
+        '01:48:46.407254-06:00'  | '01:48:46.407254-06:00'
+    }
+
+    void "Test a Date before 1 AD or after 9999 renders with the date format, as in Grails 7"() {
+        given: "A view that renders a Date"
+        String source = '''
+model {
+    Date date
+}
+
+json {
+    date date
+}
+'''
+        def bc = new GregorianCalendar(TimeZone.getTimeZone('UTC')).tap {
+            clear()
+            set(Calendar.ERA, GregorianCalendar.BC)
+            set(44, Calendar.MARCH, 15)
+        }.time
+
+        expect:
+        render(source, [date: Date.from(Instant.parse('+12345-01-01T00:00:00Z'))]).json.date == '12345-01-01T00:00:00.000Z'
+        render(source, [date: bc]).json.date == '0044-03-15T00:00:00.000Z'
     }
 
     void "Test Date, Calendar and ZonedDateTime map keys render like their values"() {
@@ -330,7 +376,17 @@ json {
         def generator = new JsonViewTemplateEngine(configuration, getClass().classLoader).generator
         def date = new Date(1759909726407L)
 
-        expect: "Dates use the configured pattern and time zone instead of the Spring Boot format"
+        expect: "Dates use the configured pattern and time zone"
         generator.toJson([date: date, keyed: [(date): 'value']]) == '{"date":"2025-10-08 07:48","keyed":{"2025-10-08 07:48":"value"}}'
+    }
+
+    private static boolean outsideFourDigitYears(Object value) {
+        Object date = value instanceof Map ? ((Map) value).keySet().first() : value
+        if (!(date instanceof Date || date instanceof Calendar)) {
+            return false
+        }
+        def calendar = new GregorianCalendar(TimeZone.getTimeZone('UTC'))
+        calendar.time = date instanceof Calendar ? ((Calendar) date).time : (Date) date
+        calendar.get(Calendar.ERA) == GregorianCalendar.BC || calendar.get(Calendar.YEAR) > 9999
     }
 }

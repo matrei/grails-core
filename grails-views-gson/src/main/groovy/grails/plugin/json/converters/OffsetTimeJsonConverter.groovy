@@ -20,13 +20,13 @@
 package grails.plugin.json.converters
 
 import java.time.OffsetTime
+import java.time.format.DateTimeFormatter
 
 import groovy.json.JsonGenerator
 import groovy.transform.CompileStatic
 
 /**
- * A class to render a {@link OffsetTime} as json: its ISO-8601 {@link OffsetTime#toString()} form
- * (e.g. {@code 03:00-03:00}), the same as Spring Boot's default Jackson rendering.
+ * A class to render a {@link OffsetTime} as json
  *
  * @author James Kleeh
  */
@@ -40,6 +40,6 @@ class OffsetTimeJsonConverter implements JsonGenerator.Converter {
 
     @Override
     Object convert(Object value, String key) {
-        value.toString()
+        DateTimeFormatter.ISO_OFFSET_TIME.format((OffsetTime) value)
     }
 }

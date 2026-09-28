@@ -35,34 +35,22 @@ import org.apache.groovy.json.internal.CharBuf
 import org.grails.web.json.JsonDateFormat
 
 /**
- * The {@link JsonGenerator} of JSON views. It writes date and time values the same way as
- * Spring Boot's default Jackson rendering:
- *
- * <ul>
- *   <li>{@link Date} and {@link Calendar} values are written by {@link JsonDateFormat} in the configured
- *   {@code grails.views.json.generator.timeZone} (a UTC instant such as {@code 2024-06-15T14:30:45.123Z} in the
- *   default {@code GMT}), unless a {@code grails.views.json.generator.dateFormat} pattern is configured, in which
- *   case they are written with that pattern, time zone and locale.</li>
- *   <li>{@link Date} and {@link Calendar} map keys are written the same way as those values, and
- *   {@link ZonedDateTime} map keys as {@link JsonDateFormat#formatKey(Object)} does, rather than with
- *   their {@code toString()}. Keys that format to the same text are all written, as Jackson writes them.</li>
- * </ul>
+ * The {@link JsonGenerator} of JSON views. It writes {@link Date} and {@link Calendar} map keys the same way as
+ * those values, with the configured {@code grails.views.json.generator.dateFormat}, time zone and locale, and
+ * {@link ZonedDateTime} map keys as {@link JsonDateFormat#formatKey(Object)} does, rather than with their
+ * {@code toString()}, as Spring Boot's default Jackson rendering does. Keys that format to the same text are all
+ * written, as Jackson writes them.
  *
  * @since 8.0
  */
 @CompileStatic
 class JsonViewGenerator extends DefaultJsonGenerator {
 
-    private final boolean springBootDates
-
     /**
      * @param options the generator options
-     * @param springBootDates whether to write Date and Calendar values with {@link JsonDateFormat}
-     *        rather than the date format of the options
      */
-    JsonViewGenerator(JsonGenerator.Options options, boolean springBootDates) {
+    JsonViewGenerator(JsonGenerator.Options options) {
         super(options)
-        this.springBootDates = springBootDates
     }
 
     /**
@@ -95,11 +83,6 @@ class JsonViewGenerator extends DefaultJsonGenerator {
             return formatDate(((Calendar) key).time)
         }
         JsonDateFormat.formatKey(key)
-    }
-
-    @Override
-    protected void writeDate(Date date, CharBuf buffer) {
-        buffer.addQuoted(formatDate(date))
     }
 
     @Override
@@ -140,9 +123,6 @@ class JsonViewGenerator extends DefaultJsonGenerator {
     }
 
     private String formatDate(Date date) {
-        if (springBootDates) {
-            return JsonDateFormat.format(date.time, timezone)
-        }
         SimpleDateFormat formatter = new SimpleDateFormat(dateFormat, dateLocale)
         formatter.timeZone = timezone
         formatter.format(date)

@@ -30,15 +30,14 @@ class JsonViewGeneratorConfiguration {
     Boolean escapeUnicode = false
 
     /**
-     * A {@link java.text.SimpleDateFormat} pattern for {@link Date} and {@link Calendar} values. When it is
-     * not set they are written the same way as Spring Boot writes them, a UTC instant with millisecond
-     * precision such as {@code 2024-06-15T14:30:45.123Z} (see {@link org.grails.web.json.JsonDateFormat}).
+     * The {@link java.text.SimpleDateFormat} pattern for {@link Date} and {@link Calendar} values and map keys. In the
+     * default {@link #timeZone} it writes a UTC instant with millisecond precision, such as
+     * {@code 2024-06-15T14:30:45.123Z}, as Spring Boot does.
      */
-    String dateFormat
+    String dateFormat = /yyyy-MM-dd'T'HH:mm:ss.SSSX/
 
     /**
-     * The time zone that {@link Date} and {@link Calendar} values are written in: with the zone's offset, as Spring Boot's
-     * {@code spring.jackson.time-zone} does, or with {@link #dateFormat} when it is set.
+     * The time zone that {@link #dateFormat} writes {@link Date} and {@link Calendar} values in.
      */
     String timeZone = 'GMT'
 
