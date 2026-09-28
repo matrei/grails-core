@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Dispatch from the maintenance branch that should be built (Use workflow from).
-# Choose the slot. Region, stack name, and JDK come from that branch.
+# Dispatch from the ref that should be built (Use workflow from): the release tag
+# for a release slot, or the maintenance branch for a snapshot slot. Choose the
+# slot. The deployed version, region, stack name, and JDK come from that ref.
 # GitHub lists these choices from the default branch; merge this file up before
 # the new next-snapshot and older options appear in the Actions UI.
 

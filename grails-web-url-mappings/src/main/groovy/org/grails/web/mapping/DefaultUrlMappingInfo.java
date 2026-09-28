@@ -31,7 +31,6 @@ import org.apache.commons.logging.LogFactory;
 
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
-import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 import org.springframework.web.multipart.MultipartResolver;
 import org.springframework.web.servlet.DispatcherServlet;
@@ -202,7 +201,7 @@ public class DefaultUrlMappingInfo extends AbstractUrlMappingInfo {
     }
 
     public String getActionName() {
-        GrailsWebRequest webRequest = (GrailsWebRequest) RequestContextHolder.getRequestAttributes();
+        GrailsWebRequest webRequest = UrlMappingUtils.lookupWebRequest();
 
         String name = webRequest == null ? null : checkDispatchAction(webRequest.getCurrentRequest());
         if (name == null) {
