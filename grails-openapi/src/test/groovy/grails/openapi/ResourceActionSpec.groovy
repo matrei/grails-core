@@ -103,6 +103,46 @@ class ResourceActionSpec extends Specification {
         openApi.paths['/satchels/export'].get.responses['200'].content == null
     }
 
+    void 'describes where the resource is only where RestfulController itself says so'() {
+        when: 'a RestfulController that overrides its save, and inherits its update and patch'
+        OpenAPI openApi = hamperDocument()
+
+        then: 'its own update says where the resource it updated is, and so does its patch, which update serves'
+        with(openApi.paths['/hampers/{id}'].put.responses['200'].headers['Location']) {
+            description == 'The URL of the updated resource'
+            schema.format == 'uri'
+        }
+        openApi.paths['/hampers/{id}'].patch.responses['200'].headers['Location']
+
+        and: 'the save it overrides need not say where it created the resource, as a generated controller does not'
+        !openApi.paths['/hampers'].post.responses['201'].headers
+    }
+
+    void 'describes where the resource is only where the patch is served by RestfulController\'s own update'() {
+        when: 'a RestfulController that overrides its update, which its patch delegates to'
+        OpenAPI openApi = OpenApiFixture.document([CaddyController], [Hamper]) {
+            '/caddies'(resources: 'caddy')
+        }
+
+        then:
+        !openApi.paths['/caddies/{id}'].put.responses['200'].headers
+        !openApi.paths['/caddies/{id}'].patch.responses['200'].headers
+
+        and: 'its own save still says where it created the resource'
+        openApi.paths['/caddies'].post.responses['201'].headers['Location'].description == 'The URL of the created resource'
+    }
+
+    void 'describes no location for a controller generated for a REST application, which sends none'() {
+        when:
+        OpenAPI openApi = OpenApiFixture.document([SatchelController], [Satchel]) {
+            '/satchels'(resources: 'satchel')
+        }
+
+        then:
+        !openApi.paths['/satchels'].post.responses['201'].headers
+        !openApi.paths['/satchels/{id}'].put.responses['200'].headers
+    }
+
     private static OpenAPI hamperDocument() {
         OpenApiFixture.document([HamperController], [Hamper]) {
             '/hampers'(resources: 'hamper')
@@ -154,6 +194,17 @@ class TrunkController extends RestfulController<Hamper> {
     @Override
     Object index(Integer max) {
         respond([])
+    }
+}
+
+@Artefact('Controller')
+class CaddyController extends RestfulController<Hamper> {
+
+    CaddyController() { super(Hamper) }
+
+    @Override
+    Object update() {
+        super.update()
     }
 }
 

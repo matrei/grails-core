@@ -606,7 +606,7 @@ class GrailsOpenApiGenerator {
             }
 
             if (resourceAction) {
-                boolean locates = controllerType != null && RestfulController.isAssignableFrom(controllerType)
+                boolean locates = RestfulControllerActions.locates(controllerType, actionName)
                 operation.setResponses(responses.restful(controller, resourceType, actionName, !pathNames.isEmpty(),
                         mediaTypes.responseMediaTypes(controller, actionName), locates))
             }

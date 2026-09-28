@@ -599,8 +599,12 @@ holding one for each. The `xml` object cannot describe a map, which Grails rende
 elements keyed by an attribute, and the document describes the XML Grails renders by default, not
 that of `grails.converters.xml.default.deep` or `grails.converters.xml.domain.include.class`.
 
-A `RestfulController` answers a `save` with a `Location` header naming the created resource, which
-the `201` response describes.
+`RestfulController` answers its own `save` and `update` with a `Location` header naming the
+resource, which the `201` and `200` responses describe, and its `patch` too, which `update` serves.
+The header is something only `RestfulController`'s code sends, rather than part of what the action
+answers by its role, since a controller generated for a REST application does not send it. So an
+action the controller overrides is described without it, and one that sends it declares it with
+`@ApiResponse(headers)`.
 
 ==== Parameters
 

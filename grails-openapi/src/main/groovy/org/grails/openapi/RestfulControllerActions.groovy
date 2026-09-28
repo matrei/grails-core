@@ -61,6 +61,11 @@ class RestfulControllerActions {
             .toSet().asImmutable()
 
     /**
+     * The actions RestfulController answers with where the resource they create or update is.
+     */
+    private static final Set<String> LOCATING_ACTIONS = ['save', 'update', 'patch'].toSet().asImmutable()
+
+    /**
      * The action another action is served through: patch delegates to update.
      */
     private static final Map<String, String> DELEGATES = [patch: 'update'].asImmutable()
@@ -91,10 +96,13 @@ class RestfulControllerActions {
     }
 
     /**
-     * Whether the action answers with where the resource it created is. Save does.
+     * Whether the action answers with where the resource it created or updated is, in the
+     * {@code Location} header. RestfulController's own save and update do, and its patch through
+     * update. A controller generated for a REST application does not, so an action the controller
+     * overrides, or declares itself, is not described with it.
      */
-    static boolean locates(String actionName) {
-        actionName == 'save'
+    static boolean locates(Class<?> controllerClass, String actionName) {
+        actionName in LOCATING_ACTIONS && runsOwnAction(controllerClass, actionName)
     }
 
     /**
@@ -159,7 +167,18 @@ class RestfulControllerActions {
      * refused, while one it provides itself does whatever it provides.
      */
     static boolean refusedWhenReadOnly(Class<?> controllerClass, String actionName) {
-        if (!(actionName in WRITE_ACTIONS) || !isInherited(controllerClass, actionName)) {
+        actionName in WRITE_ACTIONS && runsOwnAction(controllerClass, actionName)
+    }
+
+    /**
+     * Whether a request for the action runs RestfulController's own code for it, which is what
+     * decides what only that code does, as opposed to what the action answers by the part it plays
+     * in the resource: the controller is a RestfulController inheriting the action, and the action
+     * it delegates to.
+     */
+    private static boolean runsOwnAction(Class<?> controllerClass, String actionName) {
+        if (controllerClass == null || !RestfulController.isAssignableFrom(controllerClass)
+                || !isInherited(controllerClass, actionName)) {
             return false
         }
         String delegate = DELEGATES[actionName]

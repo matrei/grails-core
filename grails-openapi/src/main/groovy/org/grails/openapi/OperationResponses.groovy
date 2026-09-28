@@ -39,6 +39,7 @@ import grails.core.GrailsControllerClass
 class OperationResponses {
 
     private static final String DEFAULT_RESPONSE_CODE = '200'
+    private static final String CREATED_RESPONSE_CODE = '201'
     private static final String NOT_FOUND_RESPONSE_CODE = '404'
     private static final String UNPROCESSABLE_RESPONSE_CODE = '422'
     private static final String LOCATION_HEADER = 'Location'
@@ -56,8 +57,8 @@ class OperationResponses {
      * NO_CONTENT with no body, an action addressed by an identifier can miss, and an action that
      * validates what it binds can answer with the validation errors.
      *
-     * @param locates whether a save answers with where the created resource is, as a
-     * RestfulController does
+     * @param locates whether the action answers with where the resource it created or updated
+     * is, as RestfulController's own save and update do
      */
     ApiResponses restful(GrailsControllerClass controller, Class<?> resourceType, String actionName, boolean takesId,
                          Map<String, Boolean> mediaTypes, boolean locates) {
@@ -74,9 +75,10 @@ class OperationResponses {
                 success.setContent(MediaTypes.content(schema, mediaTypes))
             }
         }
-        if (locates && RestfulControllerActions.locates(actionName)) {
+        if (locates) {
+            String located = RestfulControllerActions.successCode(actionName) == CREATED_RESPONSE_CODE ? 'created' : 'updated'
             success.addHeaderObject(LOCATION_HEADER, new Header()
-                    .description('The URL of the created resource')
+                    .description("The URL of the ${located} resource".toString())
                     .schema(new StringSchema().format('uri')))
         }
         responses.addApiResponse(RestfulControllerActions.successCode(actionName), success)
