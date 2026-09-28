@@ -4236,3 +4236,201 @@ What reads the names the configuration presents sees the change too:
 * GORM used outside a Grails application, given a `ConfigurableEnvironment` it copies the property
   names of, no longer finds the list under its own name. In a Grails application a datastore is
   given `grailsApplication.config`, and sees the list as before.
+
+==== 77. JSON Rendering of Dates and Times Matches Spring Boot
+
+JSON rendered by `grails.converters.JSON` (`render ... as JSON`, and `respond` for a JSON request) and by JSON views,
+including `g.render`, writes date and time values the same way as Spring Boot's default Jackson `JsonMapper`. The
+exceptions are listed in the notes at the end of this section.
+
+===== 77.1 What 8.0.0 Restores From Grails 7
+
+8.0.0-RC1 changed how `grails.converters.JSON` and `grails.converters.XML` render some dates. 8.0.0 renders them as
+Grails 7 did, so an application upgrading from Grails 7 needs no change for these:
+
+[cols="2,2,2", options="header"]
+|===
+| Value
+| 8.0.0-RC1
+| Grails 7 and 8.0.0
+
+| A `Date`, `Calendar` or `java.sql.Timestamp` whose milliseconds are zero
+| `"2026-09-25T03:00:00Z"`
+| `"2026-09-25T03:00:00.000Z"`
+
+| A `java.sql.Timestamp` with nanoseconds
+| `"2025-10-08T07:48:46.407254Z"`
+| `"2025-10-08T07:48:46.407Z"`
+
+| A `java.sql.Date` with `grails.converters.JSON` or `grails.converters.XML`, and a `java.sql.Time` with
+`grails.converters.XML`
+| a failure to render it
+| rendered as a `Date` is
+|===
+
+See https://github.com/apache/grails-core/issues/16406[#16406].
+
+===== 77.2 Values That Render Differently Than in Grails 7
+
+Review these where an application or its clients read them:
+
+[cols="2,2,2", options="header"]
+|===
+| Value
+| Grails 7
+| Grails 8
+
+| `java.sql.Time`
+| `"2025-10-08T07:48:46.407Z"`, the UTC instant, which does not bind back to a `java.sql.Time`
+| `"01:48:46"`, from `Time#toString()` in the JVM default time zone, which binds back to the same time of day, to the
+second, as with Spring Boot
+
+| A `Date`, `Calendar`, `java.sql` date type or `ZonedDateTime` map key
+| the key's `toString()`, such as `"Wed Oct 08 01:48:46 MDT 2025"`
+| a `Date` (a `java.sql.Time` too) or `Calendar` key as a `Date` value is written, such as
+`"2025-10-08T07:48:46.407Z"`; a `ZonedDateTime` key as `"2026-09-25T00:00:00-03:00"`
+
+| A `Date` or `Calendar` before 1 AD or after 9999 (`grails.converters.JSON`)
+| `"12345-01-01T00:00:00.000Z"`, `"0044-03-15T00:00:00.000Z"` (44 BC)
+| `"+12345-01-01T00:00:00.000Z"`, `"-0043-03-15T00:00:00.000Z"`, ISO 8601 expanded years
+
+| A `Date` inside a collection that `g.render` writes element by element, such as a `List<Object>`
+| `"2025-10-08T07:48:46+0000"`
+| `"2025-10-08T07:48:46.407Z"`, as any other `Date` value
+
+| A `Date` or `Calendar` in JSON views with a configured `grails.views.json.generator.timeZone` other than `GMT`
+| the offset in hours only, such as `"2025-10-08T03:48:46.407-04"`, and `"2025-10-08T13:18:46.407+05"` for
+`Asia/Kolkata`, which names an instant 30 minutes off
+| the offset in hours and minutes, such as `"2025-10-08T03:48:46.407-04:00"` and `"2025-10-08T13:18:46.407+05:30"`, as
+Spring Boot writes them; the default date format is now `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`
+
+| A `Date` rendered by `grails.converters.XML`
+| `2025-10-08 01:48:46.407 MDT`
+| `2025-10-08T01:48:46.407-06:00`, an ISO-8601 date and time with the offset of the JVM default time zone
+|===
+
+Data binding binds a `Month` from its number as well as its name, as Spring Boot reads it: `9`, `"9"` and `"SEPTEMBER"`
+bind to `SEPTEMBER`. Grails 7 bound a number through Spring's conversion service by ordinal, so `9` bound to `OCTOBER`.
+
+JSON views write `Date` and `Calendar` map keys with `grails.views.json.generator.dateFormat`, in the configured
+`timeZone` and `locale`, as they write those values. As with Spring Boot's `spring.jackson.date-format`, the date format
+no longer applies to `java.sql.Time` values, which are written as `"01:48:46"`.
+
+===== 77.3 Values Grails 7 Did Not Render as Values
+
+These rendered as an object of their properties, as `{}`, or not at all, and now render as values:
+
+[cols="2,2,2", options="header"]
+|===
+| Type
+| Grails 7
+| Grails 8
+
+| `java.time.LocalTime` (`grails.converters.JSON`)
+| `{"hour":1,"minute":48,"nano":407254000,"second":46}`
+| `"01:48:46.407254"`, as JSON views already rendered it
+
+| `java.time.OffsetTime` (`grails.converters.JSON`)
+| an object of its properties
+| `"03:00:00-03:00"`, as JSON views already rendered it
+
+| `java.time.Period` (`grails.converters.JSON`)
+| an object of its properties
+| `"P1Y2M3D"`, as JSON views already rendered it
+
+| `java.time.Year`
+| an object of its properties, or `{}`
+| `2026`, a JSON number
+
+| `java.time.YearMonth`, `java.time.MonthDay`
+| an object of their properties, or `{}`
+| `"2026-09"`, `"--09-25"`
+
+| `java.time.Duration`
+| an object of its properties, or `{}`
+| `"PT1H30M"`, from `Duration#toString()`
+
+| `java.time.ZoneId`, `java.time.ZoneOffset`
+| an object of their properties, including the zone rules, or `{}`
+| `"America/Sao_Paulo"`, `"-03:00"`
+
+| `java.util.TimeZone`
+| an object of its properties, or a failure to render it
+| `"America/Sao_Paulo"`, its ID
+
+| `javax.xml.datatype.XMLGregorianCalendar`
+| an object of its properties
+| as a `Calendar` is, such as `"2025-10-08T07:48:46.407Z"`
+
+| `javax.xml.datatype.Duration`
+| a failure to render it
+| `"P1DT2H"`, from `Duration#toString()`
+|===
+
+===== 77.4 Keeping the Grails 7 Rendering
+
+To keep the Grails 7 rendering of a type, register an object marshaller for it with `grails.converters.JSON`, for
+example in `BootStrap.init`, and a `groovy.json.JsonGenerator.Converter` for it in JSON views, as described in
+section 24, Custom JSON View Converters:
+
+[source,groovy]
+----
+DateTimeFormatter utc = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
+JSON.registerObjectMarshaller(java.sql.Time) { java.sql.Time time ->
+    utc.format(Instant.ofEpochMilli(time.time))
+}
+----
+
+A JSON views converter that returns `new Date(time.time)` for a `java.sql.Time` writes it with the configured
+`dateFormat`, as Grails 7 did. Map keys are not rendered by marshallers or converters: to keep the `toString()` of a date
+key, convert the keys to strings before rendering the map, for example with
+`map.collectEntries { key, value -> [(key.toString()): value] }`.
+
+The default JSON marshallers have implicit priorities that follow their order (-1, -2, and so on), and the marshallers
+added in 8.0 shift those, so a marshaller registered with an explicit negative priority may now come before or after
+different defaults. Marshallers registered with the default priority of 0, or higher, still take precedence over all
+of the defaults. A marshaller registered for `Date` or `Calendar`, like `grails.converters.json.date` set to
+`javascript`, changes how those values render with `grails.converters.JSON`, but not map keys of those types, which
+keep the form in the table above. JSON views format date map keys with `dateFormat`, as described above.
+
+NOTE: Enums render by `name()`, as described in section 8, Enum Serialization Default Changed, while Jackson 3 writes an
+enum's `toString()`, and a `java.time.Month` as its number. The two differ for `Month` (`"SEPTEMBER"` in Grails, `9` in
+Spring Boot) and for enums that override `toString()`, such as `java.time.temporal.ChronoUnit` (`"SECONDS"` in Grails,
+`"Seconds"` in Spring Boot). To render a `Month` as its number, register
+`JSON.registerObjectMarshaller(Month) { Month month -> month.value }` and a JSON views converter that returns
+`month.value`.
+
+NOTE: An `OffsetTime` keeps its seconds and writes a fraction of a second with only the digits it needs, such as
+`"03:00:00-03:00"`, as JSON views have written it since Grails 7, where Spring Boot writes `"03:00-03:00"`. JSON views
+write a year before 1 AD or after 9999 as Grails 7 did.
+
+NOTE: The HAL renderer, `grails.rest.render.hal.HalJsonRenderer` for `application/hal+json`, writes values with Groovy's
+default JSON generator and is not changed.
+
+==== 78. A Date With an Offset Is Bound to the Instant It Names
+
+When controllers, command objects and `bindData` bind a request, a date and time in its ISO 8601
+form, with a `T` between the date and the time, which is how Grails renders a date in JSON, is now
+read first, before the formats that `grails.databinding.dateFormats` lists are tried. Previously:
+
+* `2024-05-01T10:00:00Z`, which 8.0.0-RC1 renders for a `Date` or a `Calendar` whose milliseconds are
+  zero, and which a client may send for any date, was read by the `yyyy-MM-dd'T'HH:mm:ss'Z'` format
+  as a time in the zone of the server, so it was bound off by the offset of that zone.
+* `2024-05-01T10:00:00+02:00` was read by `yyyy-MM-dd'T'HH:mm:ss`, which left the offset unread,
+  and was bound as a time in the zone of the server.
+* A fraction of a second of fewer than three digits, such as the `.5` of `10:00:00.5Z`, was read as
+  milliseconds, so as 5 rather than 500.
+* An `OffsetDateTime` or a `ZonedDateTime` could not be bound from `2024-05-01T10:00:00Z` or
+  `2024-05-01T10:00:00+02:00`, which is how Grails renders them, and a `LocalDateTime` or a
+  `LocalTime` could not be bound from a value with a fraction of a second.
+
+Each is now bound to what it names. A server running in UTC saw the first two bound correctly
+before, and sees no change.
+
+The formats in `grails.databinding.dateFormats` are then tried in order, and a format that reads all
+of the value is now used before an earlier one that reads only the start of it. A value that no format
+reads all of is bound as before, by the first format that reads the start of it: `2024-05-01 10:00`
+is still bound as midnight by `yyyy-MM-dd`, losing the time. Add a format that reads the whole value,
+such as `yyyy-MM-dd HH:mm`, to keep the time.
+
+The date scalars of GraphQL, which read `grails.databinding.dateFormats` too, are not changed.
