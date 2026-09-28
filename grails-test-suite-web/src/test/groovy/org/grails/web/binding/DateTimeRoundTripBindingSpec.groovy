@@ -104,17 +104,17 @@ class DateTimeRoundTripBindingSpec extends Specification implements ControllerUn
         '2024-05-01T10:00:00.000+02:00' | '2024-05-01T08:00:00Z'
     }
 
-    void 'does not bind a date that a format reads only the start of'() {
-        given: 'a date and time no format reads all of, where one reads the date and would lose the time'
+    void 'binds a date that no format reads all of with the first format that reads the start of it, as Grails 7 did'() {
+        given: 'a date and time no format reads all of, where yyyy-MM-dd reads the date'
         request.method = 'POST'
         request.json = '{"at": "2024-05-01 10:00"}'
 
         when:
         Appointment appointment = controller.save().appointment
 
-        then:
-        appointment.at == null
-        appointment.errors.hasFieldErrors('at')
+        then: 'it binds to the start of that day on the server'
+        !appointment.errors.hasFieldErrors('at')
+        appointment.at.toInstant() == Instant.parse('2024-05-01T06:00:00Z')
     }
 }
 

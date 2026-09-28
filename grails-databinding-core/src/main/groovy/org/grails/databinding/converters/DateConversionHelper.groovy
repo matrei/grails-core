@@ -19,7 +19,6 @@
 package org.grails.databinding.converters
 
 import java.text.DateFormat
-import java.text.ParseException
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.time.ZonedDateTime
@@ -52,7 +51,8 @@ class DateConversionHelper implements ValueConverter {
      * Converts a date and time with an offset, such as {@code 2024-05-01T10:00:00Z} or
      * {@code 2024-05-01T10:00:00+02:00}, as ISO 8601 writes it, and as Grails renders a date in
      * JSON, to the instant it names, whatever the zone of the server. Any other value is
-     * converted by the first of the {@link #formatStrings} that reads all of it.
+     * converted by the first of the {@link #formatStrings} that reads all of it, and a value that
+     * none of them reads all of by the first that reads the start of it, as before.
      */
     Object convert(value) {
         Date dateValue
@@ -60,14 +60,14 @@ class DateConversionHelper implements ValueConverter {
             if (!value) {
                 return null
             }
-            dateValue = offsetDateTime((String) value)
+            dateValue = offsetDateTime((String) value) ?: parseWhole((String) value)
             Exception firstException
             formatStrings.each { String format ->
                 if (dateValue == null) {
                     DateFormat formatter = new SimpleDateFormat(format)
                     try {
                         formatter.lenient = dateParsingLenient
-                        dateValue = parseAll(formatter, (String) value)
+                        dateValue = formatter.parse((String) value)
                     } catch (Exception e) {
                         firstException = firstException ?: e
                     }
@@ -111,17 +111,25 @@ class DateConversionHelper implements ValueConverter {
     }
 
     /**
-     * A format that reads only the start of a value, leaving an offset or a fraction of a second
-     * after it unread, would convert it to another date than the one sent, so it does not convert it.
+     * The first of the formats that reads all of the value, so that an earlier format that reads only
+     * the start of it, leaving an offset or a fraction of a second unread, does not convert it to
+     * another date than the one sent.
      */
-    private static Date parseAll(DateFormat formatter, String value) {
-        ParsePosition position = new ParsePosition(0)
-        Date date = formatter.parse(value, position)
-        if (date == null || position.index != value.length()) {
-            throw new ParseException("Unparseable date: \"${value}\"".toString(),
-                    position.errorIndex >= 0 ? position.errorIndex : position.index)
+    private Date parseWhole(String value) {
+        for (String format in formatStrings) {
+            try {
+                DateFormat formatter = new SimpleDateFormat(format)
+                formatter.lenient = dateParsingLenient
+                ParsePosition position = new ParsePosition(0)
+                Date date = formatter.parse(value, position)
+                if (date != null && position.index == value.length()) {
+                    return date
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Not a valid pattern, which the read of the start of the value reports as before.
+            }
         }
-        date
+        null
     }
 
     boolean canConvert(Object value) {

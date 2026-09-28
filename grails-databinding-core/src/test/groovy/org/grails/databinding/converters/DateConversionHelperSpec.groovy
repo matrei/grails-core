@@ -177,16 +177,56 @@ class DateConversionHelperSpec extends Specification {
         '1600-01-01T10:00:00+02:00'  | 'AD 1600-01-01T08:00:00.000Z'
     }
 
-    void 'does not convert a value that a format reads only the start of'() {
-        given:
-        DateConversionHelper helper = new DateConversionHelper(formatStrings: ['yyyy-MM-dd'])
+    void 'converts #value, which no format reads all of, with the first format that reads the start of it, as Grails 7 did'() {
+        given: 'a server outside UTC, and the formats Grails configures by default'
+        TimeZone serverZone = TimeZone.default
+        TimeZone.default = TimeZone.getTimeZone('America/Denver')
+        DateConversionHelper helper = new DateConversionHelper(formatStrings: ['yyyy-MM-dd HH:mm:ss.S', "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                'yyyy-MM-dd HH:mm:ss.S z', "yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssZ", 'HH:mm:ssZ',
+                "yyyy-MM-dd'T'HH:mm:ss", 'yyyy-MM-dd', 'HH:mm:ss'])
 
-        when: 'the format would read the date and lose the time'
-        helper.convert '2024-05-01 10:00'
+        expect:
+        ((Date) helper.convert(value)).toInstant() == Instant.parse(named)
+
+        cleanup:
+        TimeZone.default = serverZone
+
+        where:
+        value                           | named
+        '2024-05-01T10:00'              | '2024-05-01T06:00:00Z'
+        '2024-05-01 10:00:00'           | '2024-05-01T06:00:00Z'
+        '2024-05-01T10:00:00.123'       | '2024-05-01T16:00:00Z'
+        '2024-05-01 10:00:00Z'          | '2024-05-01T06:00:00Z'
+        '2024-05-01T10:00:00.123+0200'  | '2024-05-01T08:00:00.123Z'
+        '2024-05-01 10:00:00.123456789' | '2024-05-01T06:00:00Z'
+    }
+
+    void 'converts a value with a configured format that reads the start of it, as Grails 7 did'() {
+        given:
+        DateConversionHelper helper = new DateConversionHelper(formatStrings: ['dd/MM/yyyy'])
+
+        expect:
+        helper.convert('01/05/2024 10:00') == new SimpleDateFormat('dd/MM/yyyy').parse('01/05/2024')
+    }
+
+    void 'converts a value with a format that reads all of it before an earlier format that reads only the start of it'() {
+        given:
+        DateConversionHelper helper = new DateConversionHelper(formatStrings: ['yyyy-MM-dd', 'yyyy-MM-dd HH:mm'])
+
+        expect: 'the time is not lost'
+        helper.convert('2024-05-01 10:00') == new SimpleDateFormat('yyyy-MM-dd HH:mm').parse('2024-05-01 10:00')
+    }
+
+    void 'reports the first format that fails when no format reads the value, as Grails 7 did'() {
+        given:
+        DateConversionHelper helper = new DateConversionHelper(formatStrings: ['yyyy-MM-dd', 'HH:mm:ss'])
+
+        when:
+        helper.convert 'not a date'
 
         then:
         ParseException e = thrown()
-        e.message == 'Unparseable date: "2024-05-01 10:00"'
+        e.message == 'Unparseable date: "not a date"'
     }
 
     @Issue("https://github.com/apache/grails-core/issues/10387")

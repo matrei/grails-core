@@ -4298,11 +4298,10 @@ read first, before the formats that `grails.databinding.dateFormats` lists are t
 Each is now bound to what it names. A server running in UTC saw the first two bound correctly
 before, and sees no change.
 
-A format in `grails.databinding.dateFormats` now binds a value only where it reads all of it. A
-value that a format read only the start of, such as `2024-05-01 10:00`, which `yyyy-MM-dd` read as
-midnight, losing the time, is now a binding error for the property. Add a format that reads the
-whole value, such as `yyyy-MM-dd HH:mm`, where such values are expected. That includes a date and
-time with a space in place of the `T`, which RFC 3339 allows, such as `2024-05-01 10:00:00Z`: add
-`yyyy-MM-dd HH:mm:ssX` where clients send it.
+The formats in `grails.databinding.dateFormats` are then tried in order, and a format that reads all
+of the value is now used before an earlier one that reads only the start of it. A value that no format
+reads all of is bound as before, by the first format that reads the start of it: `2024-05-01 10:00`
+is still bound as midnight by `yyyy-MM-dd`, losing the time. Add a format that reads the whole value,
+such as `yyyy-MM-dd HH:mm`, to keep the time.
 
 The date scalars of GraphQL, which read `grails.databinding.dateFormats` too, are not changed.
