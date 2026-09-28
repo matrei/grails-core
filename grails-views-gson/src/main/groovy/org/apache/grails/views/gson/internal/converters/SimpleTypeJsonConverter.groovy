@@ -16,31 +16,41 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
+package org.apache.grails.views.gson.internal.converters
 
-package grails.plugin.json.converters
-
-import java.sql.Time
+import java.util.function.Function
 
 import groovy.json.JsonGenerator
 import groovy.transform.CompileStatic
 
 /**
- * A class to render a {@link Time} as json: its wall-clock time in the JVM default time zone
- * ({@code HH:mm:ss}), the same as Spring Boot's default Jackson rendering, instead of the full
- * date and time the generator's date format would produce.
+ * A {@link JsonGenerator.Converter} for the values of a type that each render as a single JSON value.
  *
+ * @param <T> the type of the values
  * @since 8.0
  */
 @CompileStatic
-class SqlTimeJsonConverter implements JsonGenerator.Converter {
+class SimpleTypeJsonConverter<T> implements JsonGenerator.Converter {
+
+    private final Class<T> type
+    private final Function<? super T, ?> jsonValue
+
+    /**
+     * @param type the type of the values, including its subtypes
+     * @param jsonValue the value that the generator writes in place of a value of the type
+     */
+    SimpleTypeJsonConverter(Class<T> type, Function<? super T, ?> jsonValue) {
+        this.type = type
+        this.jsonValue = jsonValue
+    }
 
     @Override
     boolean handles(Class<?> type) {
-        Time.isAssignableFrom(type)
+        this.type.isAssignableFrom(type)
     }
 
     @Override
     Object convert(Object value, String key) {
-        value.toString()
+        jsonValue.apply(type.cast(value))
     }
 }

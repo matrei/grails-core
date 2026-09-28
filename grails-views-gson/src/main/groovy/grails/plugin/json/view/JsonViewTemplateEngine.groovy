@@ -19,6 +19,16 @@
 
 package grails.plugin.json.view
 
+import java.sql.Time
+import java.time.Duration
+import java.time.Month
+import java.time.MonthDay
+import java.time.Year
+import java.time.YearMonth
+import java.time.ZoneId
+
+import javax.xml.datatype.XMLGregorianCalendar
+
 import groovy.json.JsonGenerator
 import groovy.text.Template
 import groovy.transform.CompileStatic
@@ -28,23 +38,13 @@ import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.OrderComparator
 
-import grails.plugin.json.converters.DurationJsonConverter
 import grails.plugin.json.converters.InstantJsonConverter
 import grails.plugin.json.converters.LocalDateJsonConverter
 import grails.plugin.json.converters.LocalDateTimeJsonConverter
 import grails.plugin.json.converters.LocalTimeJsonConverter
-import grails.plugin.json.converters.MonthDayJsonConverter
-import grails.plugin.json.converters.MonthJsonConverter
 import grails.plugin.json.converters.OffsetDateTimeJsonConverter
 import grails.plugin.json.converters.OffsetTimeJsonConverter
 import grails.plugin.json.converters.PeriodJsonConverter
-import grails.plugin.json.converters.SqlTimeJsonConverter
-import grails.plugin.json.converters.TimeZoneJsonConverter
-import grails.plugin.json.converters.XMLGregorianCalendarJsonConverter
-import grails.plugin.json.converters.XmlDurationJsonConverter
-import grails.plugin.json.converters.YearJsonConverter
-import grails.plugin.json.converters.YearMonthJsonConverter
-import grails.plugin.json.converters.ZoneIdJsonConverter
 import grails.plugin.json.converters.ZonedDateTimeJsonConverter
 import grails.plugin.json.view.api.jsonapi.JsonApiIdRenderStrategy
 import grails.plugin.json.view.internal.JsonTemplateTypeCheckingExtension
@@ -55,6 +55,7 @@ import grails.views.ViewConfiguration
 import grails.views.WritableScriptTemplate
 import grails.views.api.GrailsView
 import grails.views.compiler.ViewsTransform
+import org.apache.grails.views.gson.internal.converters.SimpleTypeJsonConverter
 
 /**
  * A template engine for parsing JSON views
@@ -122,17 +123,17 @@ class JsonViewTemplateEngine extends ResolvableGroovyTemplateEngine {
         converters.add(new OffsetDateTimeJsonConverter())
         converters.add(new OffsetTimeJsonConverter())
         converters.add(new PeriodJsonConverter())
-        converters.add(new SqlTimeJsonConverter())
+        converters.add(new SimpleTypeJsonConverter<>(Time, Time::toString))
         converters.add(new ZonedDateTimeJsonConverter())
-        converters.add(new YearJsonConverter())
-        converters.add(new YearMonthJsonConverter())
-        converters.add(new MonthDayJsonConverter())
-        converters.add(new MonthJsonConverter())
-        converters.add(new DurationJsonConverter())
-        converters.add(new ZoneIdJsonConverter())
-        converters.add(new TimeZoneJsonConverter())
-        converters.add(new XMLGregorianCalendarJsonConverter())
-        converters.add(new XmlDurationJsonConverter())
+        converters.add(new SimpleTypeJsonConverter<>(Year, Year::getValue))
+        converters.add(new SimpleTypeJsonConverter<>(YearMonth, YearMonth::toString))
+        converters.add(new SimpleTypeJsonConverter<>(MonthDay, MonthDay::toString))
+        converters.add(new SimpleTypeJsonConverter<>(Month, Month::getValue))
+        converters.add(new SimpleTypeJsonConverter<>(Duration, Duration::toString))
+        converters.add(new SimpleTypeJsonConverter<>(ZoneId, ZoneId::getId))
+        converters.add(new SimpleTypeJsonConverter<>(TimeZone, TimeZone::getID))
+        converters.add(new SimpleTypeJsonConverter<>(XMLGregorianCalendar, XMLGregorianCalendar::toGregorianCalendar))
+        converters.add(new SimpleTypeJsonConverter<>(javax.xml.datatype.Duration, javax.xml.datatype.Duration::toString))
         OrderComparator.sort(converters)
         converters.each {
             options.addConverter(it)
