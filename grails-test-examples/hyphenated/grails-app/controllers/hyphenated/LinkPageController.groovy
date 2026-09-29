@@ -18,15 +18,9 @@
  */
 package hyphenated
 
-import grails.rest.RestfulController
+class LinkPageController {
 
-class CityGuidesController extends RestfulController<TourGuide> {
-
-    CityGuidesController() {
-        super(TourGuide)
-    }
-
-    def showDetails(Long id) {
-        render "City guide details ${id}"
+    def links(Long guideId) {
+        render view: '/links/guideLinks', model: [guide: TourGuide.get(guideId)]
     }
 }

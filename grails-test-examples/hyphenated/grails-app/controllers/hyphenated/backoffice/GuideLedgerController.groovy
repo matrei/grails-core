@@ -16,25 +16,20 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
-package hyphenated
+package hyphenated.backoffice
 
 import grails.rest.RestfulController
+import hyphenated.TourGuide
 
-/**
- * One of two {@code backOffice} controllers serving {@link TourGuide}, neither named after it.
- */
-class TourDeskController extends RestfulController<TourGuide> {
+class GuideLedgerController extends RestfulController<TourGuide> {
 
     static namespace = 'backOffice'
 
-    TourDeskController() {
+    GuideLedgerController() {
         super(TourGuide)
     }
 
-    /**
-     * Renders the link to show the tour guide, as a page this controller renders would build it.
-     */
-    def guideLink(Long id) {
-        render(text: grailsLinkGenerator.link(resource: TourGuide.get(id), action: 'show'), contentType: 'text/plain')
+    def links(Long guideId) {
+        render view: '/links/guideLinks', model: [guide: TourGuide.get(guideId)]
     }
 }
