@@ -34,9 +34,10 @@ import spock.lang.TempDir
  *   test:lib-a       ${lib-a.version}  = 1.0
  *   test:lib-b       ${lib-b.version}  = 2.0
  *   test:lib-literal 5.0
- *   test:family-bom  ${family-bom.version} = 3.0, imported
+ *   ${project.groupId}:family-bom  ${family-bom.version} = 3.0, imported
  *     test:family-core ${family.version} - declared by its parent POM, test:family-parent:3.0
  *     test:family-extra ${project.version}
+ *     ${project.groupId}:family-api ${family.version}
  *     test:lib-a       ${family.version} - loses to the parent BOM's own entry
  * </pre>
  */
@@ -58,7 +59,7 @@ class ValidateBomPropertiesTaskSpec extends Specification {
                     <dependency><groupId>test</groupId><artifactId>lib-b</artifactId><version>${lib-b.version}</version></dependency>
                     <dependency><groupId>test</groupId><artifactId>lib-literal</artifactId><version>5.0</version></dependency>
                     <dependency>
-                        <groupId>test</groupId><artifactId>family-bom</artifactId><version>${family-bom.version}</version>
+                        <groupId>${project.groupId}</groupId><artifactId>family-bom</artifactId><version>${family-bom.version}</version>
                         <type>pom</type><scope>import</scope>
                     </dependency>
                 </dependencies>
@@ -74,6 +75,7 @@ class ValidateBomPropertiesTaskSpec extends Specification {
                 <dependencies>
                     <dependency><groupId>test</groupId><artifactId>family-core</artifactId><version>${family.version}</version></dependency>
                     <dependency><groupId>test</groupId><artifactId>family-extra</artifactId><version>${project.version}</version></dependency>
+                    <dependency><groupId>${project.groupId}</groupId><artifactId>family-api</artifactId><version>${family.version}</version></dependency>
                     <dependency><groupId>test</groupId><artifactId>lib-a</artifactId><version>${family.version}</version></dependency>
                 </dependencies>
             </dependencyManagement>
@@ -168,6 +170,56 @@ class ValidateBomPropertiesTaskSpec extends Specification {
         result.output.contains('      test:family-extra')
     }
 
+    def "resolves coordinates written as a Maven built-in such as project.groupId"() {
+        given: "test:family-bom writes family-api's group, and test:parent-bom family-bom's, as project.groupId"
+        writeBom(['test:family-api:3.0': 'family.version'])
+
+        when:
+        BuildResult result = runAndFail()
+
+        then:
+        result.output.contains('${family.version} should be ${family-bom.version}')
+        result.output.contains('family.version = 3.0')
+        result.output.contains('      test:family-api')
+    }
+
+    def "resolves the published POM's own coordinates written as a Maven built-in"() {
+        given:
+        writeBom(['test:lib-a:1.1': 'my-lib-a.version'], [:], '''
+            publishing.publications.maven.pom.withXml { xml ->
+                xml.asNode().dependencyManagement.dependencies.dependency.each { Node dependency ->
+                    dependency.groupId[0].value = '${project.groupId}'
+                }
+            }
+        ''')
+
+        when:
+        BuildResult result = runAndFail()
+
+        then:
+        result.output.contains('${my-lib-a.version} should be ${lib-a.version}')
+        result.output.contains('      test:lib-a')
+    }
+
+    def "fails when a parent BOM manages a module whose coordinates or version cannot be resolved"() {
+        given:
+        writePom('test', 'broken-bom', '1.0', '''
+            <dependencyManagement>
+                <dependencies>
+                    <dependency><groupId>test</groupId><artifactId>lib-a</artifactId><version>1.0</version></dependency>
+                    <dependency><groupId>${unknown.group}</groupId><artifactId>lib-b</artifactId><version>2.0</version></dependency>
+                </dependencies>
+            </dependencyManagement>
+        ''')
+        writeBom(['test:lib-a:1.1': 'lib-a.version'], [:], "ext.parentBoms = ['test:broken-bom:1.0']")
+
+        when:
+        BuildResult result = runAndFail()
+
+        then: "the entry is reported rather than silently left unchecked"
+        result.output.contains('Cannot resolve ${unknown.group}:lib-b:2.0, managed by test:broken-bom:1.0')
+    }
+
     def "the parent's own entry for a module wins over the entry of a BOM it imports"() {
         given: "test:family-bom also manages test:lib-a, at 3.0 under family.version"
         writeBom(['test:lib-a:3.0': 'lib-a.version'])
@@ -197,8 +249,13 @@ class ValidateBomPropertiesTaskSpec extends Specification {
         when:
         BuildResult result = runAndFail()
 
-        then:
-        result.output.contains('${lib-literal.version} should be ${parent-bom.version}')
+        then: "renaming the pin to that property would only repeat the parent's version, so no rename is suggested"
+        result.output.contains('These versions override a version the parent BOM writes literally')
+        result.output.contains('${lib-literal.version}, where only ${parent-bom.version} moves the parent\'s version')
+        result.output.contains('      test:lib-literal')
+        result.output.contains('Remove the pin from dependencies.gradle')
+        !result.output.contains('should be')
+        !result.output.contains('Rename the version key')
     }
 
     def "documented exemptions suppress the matching failures, by property or by module"() {

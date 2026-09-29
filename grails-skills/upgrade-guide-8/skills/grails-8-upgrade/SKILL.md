@@ -80,6 +80,7 @@ Grails 8 no longer applies the `io.spring.dependency-management` plugin by defau
 |---------------------------------------|-------------------|
 | `jackson.version`, `jackson2.version` | `jackson-2-bom.version` (Jackson 2, `com.fasterxml.jackson.*`) |
 | `jackson3.version` | `jackson-bom.version` (Jackson 3, `tools.jackson.*`, the default) |
+| `jackson-bom.version` set to a 2.x version (Spring Boot 3's name for Jackson 2) | `jackson-2-bom.version`; in Grails 8 `jackson-bom.version` sets Jackson 3, so a 2.x value makes dependency resolution fail |
 | `neo4j-driver.version` (`grails-neo4j-bom`) | `neo4j-java-driver.version` |
 
 - Replace `grails { springDependencyManagement = false }` with `grails { bom = null }` for new builds that intentionally opt out.

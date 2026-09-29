@@ -48,7 +48,9 @@ import org.apache.maven.model.Model
  * <p>For every module the POM manages that a parent BOM also manages:</p>
  * <ul>
  *   <li>the version must be written as the property the parent controls that module with, so a
- *   consumer setting that one property moves the version in both BOMs; and</li>
+ *   consumer setting that one property moves the version in both BOMs. A version the parent writes
+ *   literally only moves with the property the parent itself is imported with, so a pin of it has
+ *   no consistent form and is reported without a rename to make; and</li>
  *   <li>the version must differ from the parent's, since a pin that repeats the parent's version
  *   only makes the BOM larger.</li>
  * </ul>
@@ -119,26 +121,32 @@ abstract class ValidateBomPropertiesTask extends DefaultTask {
         }.toSet()
         // a module the parent writes literally is moved by the property the parent itself is imported with
         String parentImportProperty = managed.findResult { Dependency dependency ->
-            PomVersions.isImport(dependency) && PomVersions.key(dependency) in parentKeys
+            PomVersions.isImport(dependency) && PomVersions.key(dependency, bomProperties) in parentKeys
                     ? PomVersions.propertyReference(dependency.version)
                     : null
         } ?: ''
 
         Map<String, List<String>> misnamed = new TreeMap<>()
+        Map<String, List<String>> literal = new TreeMap<>()
         Map<String, List<String>> redundant = new TreeMap<>()
         for (Dependency dependency : managed) {
-            String key = PomVersions.key(dependency)
-            String parentVersion = managedVersions.get(key)
+            String key = PomVersions.key(dependency, bomProperties)
+            String parentVersion = key != null ? managedVersions.get(key) : null
             if (parentVersion == null || key in parentKeys) {
                 continue
             }
             String property = PomVersions.propertyReference(dependency.version)
-            String parentProperty = managedProperties.get(key) ?: parentImportProperty
+            String ownProperty = managedProperties.get(key)
+            String parentProperty = ownProperty ?: parentImportProperty
             String version = PomVersions.interpolate(dependency.version, bomProperties)
 
             if (parentProperty && property != parentProperty && !isExempt(nameExemptions, property, key)) {
                 String declared = property ? "\${${property}}" : "the literal version ${version}"
-                misnamed.computeIfAbsent("${declared} should be \${${parentProperty}}" as String) { [] }.add(key)
+                if (ownProperty) {
+                    misnamed.computeIfAbsent("${declared} should be \${${parentProperty}}" as String) { [] }.add(key)
+                } else {
+                    literal.computeIfAbsent("${declared}, where only \${${parentProperty}} moves the parent's version" as String) { [] }.add(key)
+                }
             }
             if (version == parentVersion && !isExempt(redundantExemptions, property, key)) {
                 String pin = property ? "${property} = ${version}" : version
@@ -154,7 +162,7 @@ abstract class ValidateBomPropertiesTask extends DefaultTask {
             }
         }
 
-        if (unused.isEmpty() && misnamed.isEmpty() && redundant.isEmpty()) {
+        if (unused.isEmpty() && misnamed.isEmpty() && literal.isEmpty() && redundant.isEmpty()) {
             return
         }
 
@@ -165,7 +173,7 @@ abstract class ValidateBomPropertiesTask extends DefaultTask {
             message.append('\nRemove them from dependencies.gradle, or add the dependency that should use them - its key ')
                     .append('in the dependency map must reduce to the property name.\n')
         }
-        if (!misnamed.isEmpty() || !redundant.isEmpty()) {
+        if (!misnamed.isEmpty() || !literal.isEmpty() || !redundant.isEmpty()) {
             message.append("\nParent BOMs: ${parentBoms.get().join(', ')}\n")
         }
         if (!misnamed.isEmpty()) {
@@ -173,6 +181,13 @@ abstract class ValidateBomPropertiesTask extends DefaultTask {
             appendGroups(message, misnamed)
             message.append('\nAn override must reuse the property name the parent BOM uses, so that setting that one ')
                     .append('property moves the version in both BOMs. Rename the version key in dependencies.gradle.\n')
+        }
+        if (!literal.isEmpty()) {
+            message.append('\nThese versions override a version the parent BOM writes literally:\n')
+            appendGroups(message, literal)
+            message.append('\nOnly the property the parent BOM is imported with moves such a version, and a pin under that ')
+                    .append('property would repeat the parent\'s version. Remove the pin from dependencies.gradle and ')
+                    .append('inherit the parent BOM\'s version, or add a documented exemption.\n')
         }
         if (!redundant.isEmpty()) {
             message.append('\nThese versions repeat the version the parent BOM already manages:\n')

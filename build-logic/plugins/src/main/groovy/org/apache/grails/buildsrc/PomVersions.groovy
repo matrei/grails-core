@@ -30,7 +30,7 @@ import org.apache.maven.model.io.xpp3.MavenXpp3Reader
 
 /**
  * Reads POMs with Maven's own model, and resolves the {@code ${property}} references in their
- * versions, which reading a single POM leaves unresolved.
+ * coordinates and versions, which reading a single POM leaves unresolved.
  *
  * @since 8.0
  */
@@ -53,8 +53,15 @@ class PomVersions {
         model.dependencyManagement?.dependencies ?: Collections.<Dependency> emptyList()
     }
 
-    static String key(Dependency dependency) {
-        "${dependency.groupId}:${dependency.artifactId}" as String
+    /**
+     * Returns the dependency's {@code group:artifact} with its {@code ${property}} references
+     * expanded - some BOMs write their own group as {@code ${project.groupId}} - or {@code null}
+     * when a reference cannot be resolved.
+     */
+    static String key(Dependency dependency, Map<String, String> properties) {
+        String groupId = interpolate(dependency.groupId, properties)
+        String artifactId = interpolate(dependency.artifactId, properties)
+        groupId && artifactId ? "${groupId}:${artifactId}" as String : null
     }
 
     static boolean isImport(Dependency dependency) {
@@ -62,9 +69,9 @@ class PomVersions {
     }
 
     /**
-     * The properties the model's versions may refer to: its own {@code <properties>}, and the Maven
-     * built-ins, which are never declared there. A parent POM's properties are not included, since
-     * reaching the parent means resolving it.
+     * The properties the model's coordinates and versions may refer to: its own
+     * {@code <properties>}, and the Maven built-ins, which are never declared there. A parent POM's
+     * properties are not included, since reaching the parent means resolving it.
      */
     static Map<String, String> properties(Model model) {
         Map<String, String> properties = new LinkedHashMap<>()
@@ -104,25 +111,25 @@ class PomVersions {
     }
 
     /**
-     * Expands every {@code ${property}} reference in {@code version}, or returns {@code null} when
+     * Expands every {@code ${property}} reference in {@code value}, or returns {@code null} when
      * a reference cannot be resolved.
      */
-    static String interpolate(String version, Map<String, String> properties) {
-        if (version == null) {
+    static String interpolate(String value, Map<String, String> properties) {
+        if (value == null) {
             return null
         }
-        String result = version.trim()
+        String result = value.trim()
         int remaining = MAX_INTERPOLATION_DEPTH
         while (result.contains('${') && remaining-- > 0) {
             Matcher matcher = PROPERTY_REFERENCE.matcher(result)
             if (!matcher.find()) {
                 break
             }
-            String value = properties.get(matcher.group(1))
-            if (value == null) {
+            String resolved = properties.get(matcher.group(1))
+            if (resolved == null) {
                 return null
             }
-            result = result.replace(matcher.group(0), value)
+            result = result.replace(matcher.group(0), resolved)
         }
         result.contains('${') ? null : result
     }

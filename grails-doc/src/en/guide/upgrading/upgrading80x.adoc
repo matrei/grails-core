@@ -567,7 +567,7 @@ Where a Grails BOM overrides a version that an upstream BOM also manages - `spri
 One property therefore sets the version in both BOMs, and the property names in the Spring Boot documentation work unchanged in a Grails build.
 For a module Spring Boot manages through an imported BOM, that is the property Spring Boot imports the BOM with: `jackson-bom.version` moves every Jackson 3 module, whether `grails-bom` pins it or not.
 
-An override under a property name no BOM declares is silently ignored, so rename any Grails-specific property your build sets in `gradle.properties` or `ext['…']`:
+An override under a property name no BOM declares is silently ignored, so rename any Grails-specific property your build sets in `gradle.properties` or `ext['…']`, along with a Jackson 2 version set under Spring Boot 3's property name:
 
 [cols="1,2", options="header"]
 |===
@@ -576,6 +576,9 @@ An override under a property name no BOM declares is silently ignored, so rename
 
 | `jackson.version`
 | `jackson-2-bom.version` for Jackson 2 (`com.fasterxml.jackson.*`). Jackson 3 (`tools.jackson.*`), the new default, is set by `jackson-bom.version`.
+
+| `jackson-bom.version` (Spring Boot 3's name for Jackson 2)
+| `jackson-2-bom.version`. In Grails 8, `jackson-bom.version` sets Jackson 3, so a Jackson 2 version there makes dependency resolution fail.
 |===
 
 Builds that adopted a Grails 8 milestone or release candidate should rename `jackson2.version` to `jackson-2-bom.version`, `jackson3.version` to `jackson-bom.version`, and, with `grails-neo4j-bom`, `neo4j-driver.version` to `neo4j-java-driver.version`.

@@ -23,6 +23,8 @@ import java.util.function.Function
 
 import groovy.transform.CompileStatic
 
+import org.gradle.api.GradleException
+
 import org.apache.maven.model.Dependency
 import org.apache.maven.model.Model
 import org.apache.maven.model.Parent
@@ -39,6 +41,10 @@ import org.apache.maven.model.Parent
  *
  * <p>When two entries manage the same module, the first one wins, with a BOM's own entries ahead
  * of the entries it imports, matching Maven's {@code <dependencyManagement>} resolution.</p>
+ *
+ * <p>Grails applications walk BOMs the same way through {@code BomManagedVersions} in
+ * {@code grails-gradle-plugins}, which build-logic cannot depend on: a fix to how either one reads
+ * a BOM belongs in the other too.</p>
  *
  * @since 8.0
  */
@@ -86,32 +92,35 @@ class ParentBomVersions {
 
         List<Dependency> imports = []
         for (Dependency dependency : PomVersions.managedDependencies(bom)) {
-            if (!dependency.groupId || !dependency.artifactId) {
-                continue
-            }
             if (PomVersions.isImport(dependency)) {
                 imports.add(dependency)
                 continue
             }
-            record(dependency, bomProperties, controllingProperty)
+            record(dependency, bomProperties, controllingProperty, coordinates)
         }
 
         for (Dependency imported : imports) {
-            String version = record(imported, bomProperties, controllingProperty)
-            if (version) {
-                collect("${PomVersions.key(imported)}:${version}" as String, controllingPropertyOf(imported, controllingProperty))
-            }
+            collect(record(imported, bomProperties, controllingProperty, coordinates), controllingPropertyOf(imported, controllingProperty))
         }
     }
 
-    private String record(Dependency dependency, Map<String, String> bomProperties, String controllingProperty) {
+    /**
+     * Records the entry, unless an earlier one already manages the module, and returns its resolved
+     * {@code group:artifact:version}. An entry that cannot be resolved fails the build, since it
+     * would otherwise go unchecked without a trace.
+     */
+    private String record(Dependency dependency, Map<String, String> bomProperties, String controllingProperty, String bomCoordinates) {
+        String key = PomVersions.key(dependency, bomProperties)
         String version = PomVersions.interpolate(dependency.version, bomProperties)
-        String key = PomVersions.key(dependency)
-        if (version && !versions.containsKey(key)) {
+        if (!key || !version) {
+            throw new GradleException("Cannot resolve ${dependency.groupId}:${dependency.artifactId}:${dependency.version}, " +
+                    "managed by ${bomCoordinates}, from that POM's properties, its parent POMs' properties and the Maven built-ins.")
+        }
+        if (!versions.containsKey(key)) {
             versions.put(key, version)
             properties.put(key, controllingPropertyOf(dependency, controllingProperty))
         }
-        version
+        "${key}:${version}"
     }
 
     private static String controllingPropertyOf(Dependency dependency, String controllingProperty) {
