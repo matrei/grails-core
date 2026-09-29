@@ -217,6 +217,48 @@ class BuildSettings {
     public static final String COMPILE_STATIC_GSP_STRICT = 'grails.views.gsp.compileStaticConfig.strict'
 
     /**
+     * A property name whose value lists, separated by the platform's path separator, files that
+     * each name pages of a page compilation, one per line, as paths relative to the directory being
+     * compiled. Such a page is optional: if it does not compile it is left out, with a warning,
+     * rather than failing the compilation. A page generated from a template a dependency supplies is
+     * one - it is an optimisation, and without it the page is produced when it is first rendered, as
+     * it would be had nothing been generated. A page the application wrote, or generated from a
+     * template of its own, is not.
+     */
+    public static final String OPTIONAL_GSP_PAGES = 'grails.views.gsp.optionalPages'
+
+    /**
+     * A property name whose value lists, separated by the platform's path separator, directories of
+     * pages the build generated, to be compiled in the same page compilation as the directory being
+     * compiled: each page is named by its path under the directory holding it, as though it were in
+     * the directory being compiled, where a page at the same path takes precedence. A compiler that
+     * does not know it compiles no generated page, which is then produced when it is first rendered.
+     */
+    public static final String GENERATED_GSP_VIEW_DIRECTORIES = 'grails.views.gsp.generatedViewDirectories'
+
+    /**
+     * A property name that selects the type of the {@code id} GORM injects into an entity that
+     * declares none of its own.
+     *
+     * <p>{@link #GORM_DEFAULT_ID_TYPE_LONG}, the default, gives every entity a {@code Long} id.
+     * {@link #GORM_DEFAULT_ID_TYPE_NATIVE} asks the GORM implementation the entity is mapped with for
+     * its own default, so a Mongo entity is given a {@code String} id while a Hibernate entity keeps
+     * {@code Long}.</p>
+     */
+    public static final String GORM_DEFAULT_ID_TYPE = 'grails.gorm.defaultIdType'
+
+    /**
+     * The {@link #GORM_DEFAULT_ID_TYPE} value that gives every entity a {@code Long} id.
+     */
+    public static final String GORM_DEFAULT_ID_TYPE_LONG = 'long'
+
+    /**
+     * The {@link #GORM_DEFAULT_ID_TYPE} value that defers to the GORM implementation an entity is
+     * mapped with.
+     */
+    public static final String GORM_DEFAULT_ID_TYPE_NATIVE = 'native'
+
+    /**
      * The base directory of the project
      */
     public static final File BASE_DIR
