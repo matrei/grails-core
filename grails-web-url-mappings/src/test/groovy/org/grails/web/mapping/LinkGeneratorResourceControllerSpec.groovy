@@ -66,6 +66,8 @@ import org.grails.web.mapping.domainlink.Tag
 import org.grails.web.mapping.domainlink.TagsController
 import org.grails.web.mapping.domainlink.Widget
 import org.grails.web.mapping.domainlink.WidgetsController
+import org.grails.web.mapping.domainlink.archive.Item as ArchiveItem
+import org.grails.web.mapping.domainlink.catalog.Item as CatalogItem
 import org.grails.web.util.WebUtils
 import org.springframework.web.context.request.RequestContextHolder
 
@@ -110,7 +112,9 @@ class LinkGeneratorResourceControllerSpec extends Specification {
                 FolioController,
                 FoliosController,
                 org.grails.web.mapping.domainlink.print.PamphletsController,
-                org.grails.web.mapping.domainlink.archive.PamphletsController
+                org.grails.web.mapping.domainlink.archive.PamphletsController,
+                org.grails.web.mapping.domainlink.catalog.ItemController,
+                org.grails.web.mapping.domainlink.archive.ItemController
         ).tap {
             initialise()
         }
@@ -539,6 +543,26 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         generator.link(resource: new Folio(id: 6), action: 'exportAll') == '/bar/folios/exportAll/6'
     }
 
+    def "a link to the #kind Item rendered by #rendered goes to the controller serving it, not to its namesake's"() {
+        given: 'the catalog and the archive each have an Item, each served by an ItemController, in the default and archive namespaces'
+        bindRequest(controllerName, namespace)
+        def generator = createGenerator()
+
+        expect:
+        generator.link(resource: item, action: 'show') == expected
+
+        where:
+        kind      | rendered                          | controllerName | namespace || expected
+        'archive' | 'a default-namespace controller'  | 'home'         | null      || '/bar/archive/item/show/1'
+        'archive' | 'the catalog ItemController'      | 'item'         | null      || '/bar/archive/item/show/1'
+        'archive' | 'the archive ItemController'      | 'item'         | 'archive' || '/bar/archive/item/show/1'
+        'catalog' | 'a default-namespace controller'  | 'home'         | null      || '/bar/item/show/1'
+        'catalog' | 'the archive ItemController'      | 'item'         | 'archive' || '/bar/item/show/1'
+        'catalog' | 'the catalog ItemController'      | 'item'         | null      || '/bar/item/show/1'
+
+        item = kind == 'archive' ? new ArchiveItem(id: 1) : new CatalogItem(id: 1)
+    }
+
     private static List<String> warningsAbout(LogCapture logCapture, String subject) {
         logCapture.events.findAll { it.level == Level.WARN && it.formattedMessage.contains(subject) }*.formattedMessage
     }
@@ -570,6 +594,8 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         context.addPersistentEntity(Manuscript)
         context.addPersistentEntity(Folio)
         context.addPersistentEntity(Pamphlet)
+        context.addPersistentEntity(CatalogItem)
+        context.addPersistentEntity(ArchiveItem)
         context
     }
 
