@@ -19,15 +19,17 @@
 package org.grails.web.mapping.domainlink.print
 
 import grails.artefact.Artefact
+import grails.rest.RestfulController
 import org.grails.web.mapping.domainlink.Pamphlet
-import org.grails.web.mapping.domainlink.ResourceControllerBase
 
 /**
- * The only controller that shows {@code Pamphlet}, in the {@code print} namespace.
+ * The only controller that serves {@code Pamphlet}, in the {@code print} namespace.
  */
 @Artefact('Controller')
-class PamphletsController extends ResourceControllerBase<Pamphlet> {
+class PamphletsController extends RestfulController<Pamphlet> {
     static namespace = 'print'
-    def index() {}
-    def show() {}
+
+    PamphletsController() {
+        super(Pamphlet)
+    }
 }

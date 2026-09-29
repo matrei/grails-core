@@ -73,6 +73,12 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
 
     private static final Pattern absoluteUrlPattern = Pattern.compile('^[A-Za-z][A-Za-z0-9+\\-.]*:.*$')
 
+    /**
+     * The class a controller extends to serve a domain class as a REST resource. It is named rather than
+     * referenced, as the module defining it depends on this one.
+     */
+    private static final String RESTFUL_CONTROLLER_CLASS = 'grails.rest.RestfulController'
+
     String configuredServerBaseURL
     String contextPath
     String resourcePath
@@ -505,11 +511,10 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
     /**
      * Resolves the controller a {@code resource} link for the given entity targets: the nearest controller
      * serving the domain class, as {@link #nearestController} chooses it. A controller serves a domain
-     * class when it is named after it, or when it declares it as a generic type argument, as
-     * {@code PeopleController extends RestfulController<Person>} does, and it defines the action the link
-     * targets, so a controller declaring the domain class for another purpose, such as a report, is not
-     * sent links it cannot handle. The link targets the explicit {@code namespace} when one is given, and
-     * otherwise the request's own namespace.
+     * class when it is named after it, or when it extends {@code RestfulController} parameterised on it,
+     * as {@code PeopleController extends RestfulController<Person>} does, and it defines the action the
+     * link targets, so a controller is not sent links to an action it does not have. The link targets
+     * the explicit {@code namespace} when one is given, and otherwise the request's own namespace.
      *
      * <p>When no candidate is unambiguous, the link targets the controller name the candidates share, if
      * they share one, and otherwise the domain class name, as before; either way the namespace is then
@@ -652,8 +657,8 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
     }
 
     /**
-     * @return the controllers named after the entity or declaring it that define the given action, or
-     *         every such controller when the action is not known
+     * @return the controllers named after the entity or extending {@code RestfulController} parameterised
+     *         on it that define the given action, or every such controller when the action is not known
      */
     private Set<ControllerRef> servingControllers(ControllerIndex index, PersistentEntity entity, String derivedName,
                                                   String action) {
@@ -690,52 +695,27 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
     }
 
     /**
-     * Walks a controller's supertypes looking for a generic type argument that the mapping context
-     * recognises as a persistent entity. Superclasses and interfaces are both walked, so a domain class
-     * declared by an intermediate base class or by a Groovy trait is still found, and matching on the
-     * mapping context rather than on a known base type keeps this class free of any dependency on the
-     * REST controller hierarchy.
+     * The domain class a controller serves as a REST resource: the type argument of the
+     * {@code RestfulController} it extends, directly, through an intermediate base class such as
+     * {@code RestfulServiceController}, or through {@code @Scaffold}, which makes it extend one. A domain
+     * class a controller is parameterised on in any other way, as a report controller built on a generic
+     * base class or trait is, is not one it serves, so it does not take the links to that class.
      *
-     * <p>A supertype that declares more than one persistent entity is ambiguous and is skipped rather
-     * than guessed at, so a base class parameterised on both a parent and a child resource does not
-     * index the controller under the wrong one.</p>
+     * @return the domain class name, or {@code null} when the controller does not extend
+     *         {@code RestfulController} or its type argument is not a persistent entity
      */
-    private String domainClassNameFor(Class<?> controllerClass, MappingContext context) {
-        Deque<ResolvableType> queue = new ArrayDeque<>()
-        Set<Class<?>> seen = new HashSet<>()
-        queue.add(ResolvableType.forClass(controllerClass))
-        while (!queue.isEmpty()) {
-            ResolvableType type = queue.poll()
-            Class<?> raw = type.resolve()
-            if (raw == null || !seen.add(raw)) {
-                continue
+    private static String domainClassNameFor(Class<?> controllerClass, MappingContext context) {
+        ResolvableType type = ResolvableType.forClass(controllerClass)
+        Class<?> raw = type.resolve()
+        while (raw != null) {
+            if (RESTFUL_CONTROLLER_CLASS == raw.name) {
+                Class<?> resource = type.getGeneric(0).resolve()
+                return resource != null && context.getPersistentEntity(resource.name) != null ? resource.name : null
             }
-            String found = singleEntityGeneric(type, context)
-            if (found != null) {
-                return found
-            }
-            queue.add(type.superType)
-            queue.addAll(type.interfaces)
+            type = type.superType
+            raw = type.resolve()
         }
         return null
-    }
-
-    /**
-     * @return the name of the only persistent entity among the type's generic arguments, or
-     *         {@code null} when there is none or more than one
-     */
-    private static String singleEntityGeneric(ResolvableType type, MappingContext context) {
-        String found = null
-        for (ResolvableType generic in type.generics) {
-            Class<?> resolved = generic.resolve()
-            if (resolved != null && context.getPersistentEntity(resolved.name) != null) {
-                if (found != null) {
-                    return null
-                }
-                found = resolved.name
-            }
-        }
-        return found
     }
 
     @CompileStatic(TypeCheckingMode.SKIP)
@@ -893,7 +873,7 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
 
     /**
      * The registered controllers indexed for resolving links: by logical name, by the domain class each
-     * declares, and with the actions each defines, paired with the artefact array and mapping context it
+     * serves, and with the actions each defines, paired with the artefact array and mapping context it
      * was built from.
      *
      * <p>All of it is published together through a single volatile reference. Publishing parts of it as

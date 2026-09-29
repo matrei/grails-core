@@ -23,6 +23,7 @@ import grails.plugin.formfields.FormFieldsTagLib
 import grails.plugin.formfields.FormFieldsTemplateService
 import grails.plugin.formfields.mock.Author
 import grails.plugin.formfields.mock.Book
+import grails.rest.RestfulController
 import grails.testing.web.taglib.TagLibUnitTest
 import org.grails.core.artefact.ControllerArtefactHandler
 import org.grails.datastore.mapping.model.PersistentEntity
@@ -90,20 +91,16 @@ class AssociationLinkTargetSpec extends AbstractFormFieldsTagLibSpec implements 
     }
 }
 
-/**
- * Stands in for a generic REST controller base class, which declares the domain class a controller serves.
- */
-abstract class ServingControllerBase<T> {
+@Artefact('Controller')
+class WritersController extends RestfulController<Author> {
+    WritersController() {
+        super(Author)
+    }
 }
 
 @Artefact('Controller')
-class WritersController extends ServingControllerBase<Author> {
-    def show() {}
-    def create() {}
-}
-
-@Artefact('Controller')
-class TitlesController extends ServingControllerBase<Book> {
-    def show() {}
-    def create() {}
+class TitlesController extends RestfulController<Book> {
+    TitlesController() {
+        super(Book)
+    }
 }

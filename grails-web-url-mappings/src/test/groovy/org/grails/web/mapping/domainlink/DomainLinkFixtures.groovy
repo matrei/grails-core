@@ -19,6 +19,7 @@
 package org.grails.web.mapping.domainlink
 
 import grails.artefact.Artefact
+import grails.rest.RestfulController
 
 class Person {
     Long id
@@ -41,18 +42,20 @@ class Note {
 }
 
 /**
- * Stands in for a generic REST controller base class. Deliberately not a Grails artefact and not
- * named after any framework type: the domain class is resolved from the generic type argument, so
- * any generic base class must work.
+ * A generic base class that is not a REST controller, as a report or export controller might extend. A
+ * controller parameterised on a domain class through it does not serve that class.
  */
-class ResourceControllerBase<T> {
+abstract class ReportBase<T> {
 }
 
 /**
  * A non-generic intermediate that binds the type argument, so a controller extending it declares no
  * generics of its own. Exercises resolution through more than one level of the hierarchy.
  */
-abstract class WidgetControllerBase extends ResourceControllerBase<Widget> {
+abstract class WidgetControllerBase extends RestfulController<Widget> {
+    WidgetControllerBase() {
+        super(Widget)
+    }
 }
 
 /**
@@ -60,40 +63,41 @@ abstract class WidgetControllerBase extends ResourceControllerBase<Widget> {
  * class, which is the case a {@code resource} link cannot resolve by name alone.
  */
 @Artefact('Controller')
-class PeopleController extends ResourceControllerBase<Person> {
-    def index() {}
-    def show() {}
+class PeopleController extends RestfulController<Person> {
+    PeopleController() {
+        super(Person)
+    }
 }
 
 /**
- * The only controller for {@code Widget}, reaching its domain class through {@link WidgetControllerBase}.
+ * The only controller for {@code Widget}, reaching {@code RestfulController} through {@link WidgetControllerBase}.
  */
 @Artefact('Controller')
 class WidgetsController extends WidgetControllerBase {
-    def index() {}
-    def show() {}
 }
 
 /**
- * One of two controllers declaring {@code Gadget}, making the domain class ambiguous.
+ * One of two controllers serving {@code Gadget}, making the domain class ambiguous.
  */
 @Artefact('Controller')
-class GadgetsController extends ResourceControllerBase<Gadget> {
-    def index() {}
-    def show() {}
+class GadgetsController extends RestfulController<Gadget> {
+    GadgetsController() {
+        super(Gadget)
+    }
 }
 
 /**
- * The second controller declaring {@code Gadget}.
+ * The second controller serving {@code Gadget}.
  */
 @Artefact('Controller')
-class AdminGadgetsController extends ResourceControllerBase<Gadget> {
-    def index() {}
-    def show() {}
+class AdminGadgetsController extends RestfulController<Gadget> {
+    AdminGadgetsController() {
+        super(Gadget)
+    }
 }
 
 /**
- * A controller that declares no domain class, so resolution falls back to the domain class name.
+ * A controller that serves no domain class, so resolution falls back to the domain class name.
  */
 @Artefact('Controller')
 class NoteController {
@@ -107,9 +111,9 @@ class Chapter {
 }
 
 /**
- * A plain controller named after {@code Chapter}, alongside {@link ChapterApiController} which declares
- * the domain class. The naming convention has to win, or an application that already relies on it has
- * its links silently retargeted.
+ * A plain controller named after {@code Chapter}, alongside {@link ChapterApiController} which also serves
+ * the domain class. The naming convention has to win, or an application that already relies on it has its
+ * links silently retargeted.
  */
 @Artefact('Controller')
 class ChapterController {
@@ -118,9 +122,10 @@ class ChapterController {
 }
 
 @Artefact('Controller')
-class ChapterApiController extends ResourceControllerBase<Chapter> {
-    def index() {}
-    def show() {}
+class ChapterApiController extends RestfulController<Chapter> {
+    ChapterApiController() {
+        super(Chapter)
+    }
 }
 
 class Tag {
@@ -129,14 +134,14 @@ class Tag {
 }
 
 /**
- * Stands in for a generic REST trait. Groovy traits compile to an interface, so a domain class declared
- * this way is reachable only by walking interfaces rather than superclasses.
+ * Stands in for a generic trait a controller implements for another purpose than serving the domain class,
+ * such as auditing it. Groovy traits compile to an interface.
  */
-interface ResourceHolder<T> {
+interface Audited<T> {
 }
 
 @Artefact('Controller')
-class TagsController implements ResourceHolder<Tag> {
+class TagsController implements Audited<Tag> {
     def index() {}
     def show() {}
 }
@@ -147,16 +152,20 @@ class Chronicle {
 }
 
 /**
- * A base parameterised on both a parent and a child resource, so its own type arguments are ambiguous
- * and the domain class has to come from further up the hierarchy.
+ * A base parameterised on both a parent and a child resource, serving the child, so the domain class has to
+ * be the one {@code RestfulController} is parameterised on rather than any type argument.
  */
-abstract class NestedResourceControllerBase<P, T> extends ResourceControllerBase<T> {
+abstract class NestedResourceControllerBase<P, T> extends RestfulController<T> {
+    NestedResourceControllerBase(Class<T> resource) {
+        super(resource)
+    }
 }
 
 @Artefact('Controller')
 class ChroniclesController extends NestedResourceControllerBase<Person, Chronicle> {
-    def index() {}
-    def show() {}
+    ChroniclesController() {
+        super(Chronicle)
+    }
 }
 
 class Assessment {
@@ -177,10 +186,12 @@ class AssessmentController {
  * while it or another {@code manage} controller handles the request should stay in {@code manage}.
  */
 @Artefact('Controller')
-class ManageAssessmentController extends ResourceControllerBase<Assessment> {
+class ManageAssessmentController extends RestfulController<Assessment> {
     static namespace = 'manage'
-    def index() {}
-    def show() {}
+
+    ManageAssessmentController() {
+        super(Assessment)
+    }
 }
 
 /**
@@ -211,20 +222,24 @@ class BallotController {
 }
 
 /**
- * One of two {@code manage} controllers declaring {@code Ballot}, making the namespace ambiguous for it.
+ * One of two {@code manage} controllers serving {@code Ballot}, making the namespace ambiguous for it.
  */
 @Artefact('Controller')
-class ManageBallotController extends ResourceControllerBase<Ballot> {
+class ManageBallotController extends RestfulController<Ballot> {
     static namespace = 'manage'
-    def index() {}
-    def show() {}
+
+    ManageBallotController() {
+        super(Ballot)
+    }
 }
 
 @Artefact('Controller')
-class AuditBallotController extends ResourceControllerBase<Ballot> {
+class AuditBallotController extends RestfulController<Ballot> {
     static namespace = 'manage'
-    def index() {}
-    def show() {}
+
+    AuditBallotController() {
+        super(Ballot)
+    }
 }
 
 class Invoice {
@@ -242,13 +257,14 @@ class InvoiceController {
 }
 
 /**
- * Declares {@code Invoice} in the default namespace, which is nearer than {@link InvoiceController} to a
- * link rendered outside the {@code admin} namespace.
+ * Serves {@code Invoice} in the default namespace, which is nearer than {@link InvoiceController} to a link
+ * rendered outside the {@code admin} namespace.
  */
 @Artefact('Controller')
-class InvoicesController extends ResourceControllerBase<Invoice> {
-    def index() {}
-    def show() {}
+class InvoicesController extends RestfulController<Invoice> {
+    InvoicesController() {
+        super(Invoice)
+    }
 }
 
 /**
@@ -265,21 +281,50 @@ class Manuscript {
 }
 
 /**
- * The controller named after {@code Manuscript}, which shows it.
+ * The controller serving {@code Manuscript}, in the default namespace.
  */
 @Artefact('Controller')
-class ManuscriptController {
-    def index() {}
-    def show() {}
+class ManuscriptController extends RestfulController<Manuscript> {
+    ManuscriptController() {
+        super(Manuscript)
+    }
 }
 
 /**
- * Declares {@code Manuscript} for reporting on it rather than serving it, so it defines no {@code show}
- * action and should not be sent the links to one, even from its own pages.
+ * Reports on {@code Manuscript} from the {@code admin} namespace through a generic base class that is not a
+ * REST controller. It has a {@code show} action of its own, for a report, so the action a link targets does
+ * not tell it apart from the controller serving the domain class.
  */
 @Artefact('Controller')
-class ManuscriptReportController extends ResourceControllerBase<Manuscript> {
+class ManuscriptReportController extends ReportBase<Manuscript> {
+    static namespace = 'admin'
     def index() {}
+    def show() {}
+    def export() {}
+}
+
+class Folio {
+    Long id
+}
+
+/**
+ * Named after {@code Folio}, but defines no {@code show} action, so it should not be sent the links to one,
+ * even from its own pages.
+ */
+@Artefact('Controller')
+class FolioController {
+    def index() {}
+}
+
+/**
+ * Serves {@code Folio} under another name, with actions of its own besides those it inherits.
+ */
+@Artefact('Controller')
+class FoliosController extends RestfulController<Folio> {
+    FoliosController() {
+        super(Folio)
+    }
+
     def export() {}
     def exportAll() {}
 }

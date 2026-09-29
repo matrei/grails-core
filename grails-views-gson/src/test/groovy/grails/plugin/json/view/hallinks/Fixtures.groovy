@@ -20,6 +20,7 @@ package grails.plugin.json.view.hallinks
 
 import grails.artefact.Artefact
 import grails.persistence.Entity
+import grails.rest.RestfulController
 
 @Entity
 class Film {
@@ -27,16 +28,11 @@ class Film {
 }
 
 /**
- * Stands in for a generic REST controller base class, which declares the domain class a controller serves.
- */
-abstract class ServingControllerBase<T> {
-}
-
-/**
  * Serves {@link Film} under another name, with no controller named after the domain class.
  */
 @Artefact('Controller')
-class MoviesController extends ServingControllerBase<Film> {
-    def index() {}
-    def show() {}
+class MoviesController extends RestfulController<Film> {
+    MoviesController() {
+        super(Film)
+    }
 }

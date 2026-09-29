@@ -96,6 +96,7 @@ dependencies {
 
     // Testing
     testImplementation 'org.apache.grails:grails-controllers' // @Controller
+    testImplementation 'org.apache.grails:grails-rest-transforms' // RestfulController, which a resource link resolves to
     testImplementation 'org.spockframework:spock-core'
 }
 

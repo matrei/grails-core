@@ -20,14 +20,14 @@ package org.grails.web.mapping.domainlink.archive
 
 import grails.artefact.Artefact
 import org.grails.web.mapping.domainlink.Pamphlet
-import org.grails.web.mapping.domainlink.ResourceControllerBase
+import org.grails.web.mapping.domainlink.ReportBase
 
 /**
- * Declares {@code Pamphlet} under the same name in the {@code archive} namespace, but does not show it, so a
- * link to show a pamphlet resolves to the {@code print} controller while the name alone is ambiguous.
+ * Has the name of the controller serving {@code Pamphlet}, in the {@code archive} namespace, but does not serve
+ * it, so a link to a pamphlet resolves to the {@code print} controller while the name alone is ambiguous.
  */
 @Artefact('Controller')
-class PamphletsController extends ResourceControllerBase<Pamphlet> {
+class PamphletsController extends ReportBase<Pamphlet> {
     static namespace = 'archive'
     def index() {}
 }

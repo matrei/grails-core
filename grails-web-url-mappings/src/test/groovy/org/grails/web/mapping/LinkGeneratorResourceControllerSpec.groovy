@@ -42,6 +42,9 @@ import org.grails.web.mapping.domainlink.ChapterApiController
 import org.grails.web.mapping.domainlink.ChapterController
 import org.grails.web.mapping.domainlink.Chronicle
 import org.grails.web.mapping.domainlink.ChroniclesController
+import org.grails.web.mapping.domainlink.Folio
+import org.grails.web.mapping.domainlink.FolioController
+import org.grails.web.mapping.domainlink.FoliosController
 import org.grails.web.mapping.domainlink.Gadget
 import org.grails.web.mapping.domainlink.GadgetsController
 import org.grails.web.mapping.domainlink.HomeController
@@ -69,8 +72,8 @@ import org.springframework.web.context.request.RequestContextHolder
 import spock.lang.Specification
 
 /**
- * Tests that a {@code resource} link targets the controller that actually exposes the domain class,
- * rather than assuming the controller is named after the domain class.
+ * Tests that a {@code resource} link targets the controller that actually serves the domain class, rather
+ * than assuming the controller is named after the domain class.
  */
 class LinkGeneratorResourceControllerSpec extends Specification {
 
@@ -104,6 +107,8 @@ class LinkGeneratorResourceControllerSpec extends Specification {
                 AdminDashboardController,
                 ManuscriptController,
                 ManuscriptReportController,
+                FolioController,
+                FoliosController,
                 org.grails.web.mapping.domainlink.print.PamphletsController,
                 org.grails.web.mapping.domainlink.archive.PamphletsController
         ).tap {
@@ -116,8 +121,8 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         WebUtils.clearGrailsWebRequest()
     }
 
-    def "a resource link targets the controller declaring the domain class, not the domain class name"() {
-        given: 'PeopleController is the only controller declaring Person'
+    def "a resource link targets the controller serving the domain class, not the domain class name"() {
+        given: 'PeopleController, extending RestfulController<Person>, is the only controller serving Person'
         def generator = createGenerator()
 
         expect: 'the link targets people rather than person'
@@ -125,7 +130,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "the domain class is resolved through an intermediate base class"() {
-        given: 'WidgetsController reaches Widget through WidgetControllerBase'
+        given: 'WidgetsController reaches RestfulController<Widget> through WidgetControllerBase'
         def generator = createGenerator()
 
         expect: 'the intermediate class does not hide the domain class'
@@ -133,7 +138,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "an ambiguous domain class falls back to the domain class name"() {
-        given: 'both GadgetsController and AdminGadgetsController declare Gadget'
+        given: 'both GadgetsController and AdminGadgetsController serve Gadget'
         def generator = createGenerator()
 
         expect: 'no controller is inferred, preserving the existing behaviour'
@@ -141,7 +146,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "an ambiguous domain class is reported once until the cache is reset"() {
-        given: 'GadgetsController and AdminGadgetsController both declare Gadget, and neither is named after it'
+        given: 'GadgetsController and AdminGadgetsController both serve Gadget, and neither is named after it'
         def generator = createGenerator()
         def logCapture = new LogCapture(DefaultLinkGenerator)
 
@@ -167,7 +172,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "an ambiguous domain class is reported again once the controllers change"() {
-        given: 'GadgetsController and AdminGadgetsController both declare Gadget, and neither is named after it'
+        given: 'GadgetsController and AdminGadgetsController both serve Gadget, and neither is named after it'
         def generator = createGenerator()
         def logCapture = new LogCapture(DefaultLinkGenerator)
 
@@ -184,7 +189,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "a resource link naming its controller is not resolved, so no ambiguity is reported"() {
-        given: 'GadgetsController and AdminGadgetsController both declare Gadget, and neither is named after it'
+        given: 'GadgetsController and AdminGadgetsController both serve Gadget, and neither is named after it'
         def generator = createGenerator()
         def logCapture = new LogCapture(DefaultLinkGenerator)
 
@@ -211,7 +216,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "an explicit namespace no controller serving the domain class is in is not reported"() {
-        given: 'GadgetsController and AdminGadgetsController both declare Gadget, neither in the reports namespace'
+        given: 'GadgetsController and AdminGadgetsController both serve Gadget, neither in the reports namespace'
         def generator = createGenerator()
         def logCapture = new LogCapture(DefaultLinkGenerator)
 
@@ -226,8 +231,8 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         logCapture.close()
     }
 
-    def "a domain class no controller declares falls back to the domain class name"() {
-        given: 'NoteController declares no domain class'
+    def "a domain class no controller serves falls back to the domain class name"() {
+        given: 'NoteController extends nothing parameterised on a domain class'
         def generator = createGenerator()
 
         expect: 'the domain class name is used, as before'
@@ -242,27 +247,27 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         generator.link(resource: new Person(id: 5), controller: 'note', action: 'show') == '/bar/note/show/5'
     }
 
-    def "a controller named after the domain class wins over one that declares it"() {
-        given: 'ChapterController is named for Chapter, and ChapterApiController declares it'
+    def "a controller named after the domain class wins over another serving it"() {
+        given: 'ChapterController is named for Chapter, and ChapterApiController extends RestfulController<Chapter>'
         def generator = createGenerator()
 
         expect: 'the naming convention wins, so an application relying on it is unaffected'
         generator.link(resource: new Chapter(id: 6), action: 'show') == '/bar/chapter/show/6'
     }
 
-    def "the domain class is resolved through a generic interface"() {
-        given: 'TagsController declares Tag through an interface rather than a superclass'
+    def "a controller parameterised on the domain class through a trait does not serve it"() {
+        given: 'TagsController implements Audited<Tag>, as a trait compiles to, and defines show'
         def generator = createGenerator()
 
-        expect: 'interfaces are walked too, as Groovy traits compile to interfaces'
-        generator.link(resource: new Tag(id: 7), action: 'show') == '/bar/tags/show/7'
+        expect: 'the link keeps the naming convention'
+        generator.link(resource: new Tag(id: 7), action: 'show') == '/bar/tag/show/7'
     }
 
-    def "a base class declaring two domain classes does not claim the wrong one"() {
-        given: 'ChroniclesController extends a base parameterised on both Person and Chronicle'
+    def "a controller serves the domain class RestfulController is parameterised on, not another type argument"() {
+        given: 'ChroniclesController extends a base parameterised on both Person and Chronicle, serving Chronicle'
         def generator = createGenerator()
 
-        expect: 'the ambiguous level is skipped and the resource comes from further up the hierarchy'
+        expect: 'the served domain class resolves to it'
         generator.link(resource: new Chronicle(id: 8), action: 'show') == '/bar/chronicles/show/8'
 
         and: 'the other type argument is not claimed by that controller'
@@ -321,7 +326,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
     }
 
     def "a namespace with more than one controller serving the domain class falls through to the naming convention"() {
-        given: 'two manage controllers declare Ballot'
+        given: 'two manage controllers serve Ballot'
         bindRequest('manageDashboard', 'manage')
         def generator = createGenerator()
 
@@ -460,13 +465,43 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         generator.link(resource: new Person(id: 11), action: 'show') != '/bar/people/show/11'
     }
 
-    def "a controller declaring the domain class is not sent a link to show it #shape"() {
-        given: 'ManuscriptReportController, which declares Manuscript but defines no show action, is handling the request'
-        bindRequest('manuscriptReport', null)
+    def "a controller parameterised on the domain class for another purpose does not take its links #rendered"() {
+        given: 'ManuscriptReportController reports on Manuscript in admin, through a generic base that is not a REST controller, and has a show action'
+        if (controllerName) {
+            bindRequest(controllerName, 'admin')
+        } else {
+            RequestContextHolder.resetRequestAttributes()
+        }
         def generator = createGenerator()
 
-        expect: 'the link goes to the controller that shows a manuscript'
-        generator.link([resource: new Manuscript(id: 1)] + attrs).startsWith('/bar/manuscript/')
+        expect: 'the link goes to ManuscriptController, which serves Manuscript'
+        generator.link([resource: new Manuscript(id: 1)] + attrs) == '/bar/manuscript/show/1'
+
+        where:
+        rendered                                            | controllerName      | attrs
+        'from another admin page'                           | 'adminDashboard'    | [action: 'show']
+        'from another admin page, as a redirect'            | 'adminDashboard'    | [method: 'GET']
+        'from the report controller itself'                 | 'manuscriptReport'  | [action: 'show']
+        'from the report controller itself, as a redirect'  | 'manuscriptReport'  | [method: 'GET']
+        'outside a request'                                 | null                | [action: 'show']
+    }
+
+    def "a link to an action only a controller not serving the domain class defines assumes the naming convention"() {
+        given: 'only ManuscriptReportController, which does not serve Manuscript, defines export'
+        bindRequest('adminDashboard', 'admin')
+        def generator = createGenerator()
+
+        expect:
+        generator.link(resource: new Manuscript(id: 3), action: 'export') == '/bar/manuscript/export/3'
+    }
+
+    def "a controller named after the domain class is not sent a link to show it #shape"() {
+        given: 'FolioController, which is named after Folio but defines no show action, is handling the request'
+        bindRequest('folio', null)
+        def generator = createGenerator()
+
+        expect: 'the link goes to the controller that shows a folio'
+        generator.link([resource: new Folio(id: 1)] + attrs).startsWith('/bar/folios/')
 
         where:
         shape                                                 | attrs
@@ -475,12 +510,12 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         'naming neither, since it is followed with a GET'     | [:]
     }
 
-    def "a link to an action only a controller declaring the domain class defines goes to it"() {
-        given: 'ManuscriptController is named after Manuscript, but only ManuscriptReportController defines export'
+    def "a link to an action only one controller serving the domain class defines goes to it"() {
+        given: 'FolioController is named after Folio, but only FoliosController defines export'
         def generator = createGenerator()
 
         expect:
-        generator.link(resource: new Manuscript(id: 4), action: 'export') == '/bar/manuscriptReport/export/4'
+        generator.link(resource: new Folio(id: 4), action: 'export') == '/bar/folios/export/4'
     }
 
     def "a link to an action no controller serving the domain class defines assumes the naming convention"() {
@@ -488,7 +523,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         def generator = createGenerator()
 
         expect:
-        generator.link(resource: new Manuscript(id: 5), action: 'print') == '/bar/manuscript/print/5'
+        generator.link(resource: new Folio(id: 5), action: 'rebind') == '/bar/folio/rebind/5'
     }
 
     def "an action is recognised once a URL converter has renamed it"() {
@@ -501,7 +536,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         generator.grailsUrlConverter = converter
 
         expect: 'the action named in the link is found under its converted name'
-        generator.link(resource: new Manuscript(id: 6), action: 'exportAll') == '/bar/manuscriptReport/exportAll/6'
+        generator.link(resource: new Folio(id: 6), action: 'exportAll') == '/bar/folios/exportAll/6'
     }
 
     private static List<String> warningsAbout(LogCapture logCapture, String subject) {
@@ -533,6 +568,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         context.addPersistentEntity(Ballot)
         context.addPersistentEntity(Invoice)
         context.addPersistentEntity(Manuscript)
+        context.addPersistentEntity(Folio)
         context.addPersistentEntity(Pamphlet)
         context
     }
