@@ -253,9 +253,10 @@ The HTTP `Accept` header is honored for all clients by default, including browse
 Grails 8 uses asset-pipeline 5.2, where a `%` or `*` component of an asset path, in a `require` directive, an `<asset:...>` tag, or a Sass import, stands for exactly one directory wherever the asset is found.
 
 - Grails 7 let one `%` stand for several directories when the asset came from a jar, as every webjar does, or from the manifest of a packaged application. A path such as `webjars/%/dist/jquery.js` resolved in Grails 7 and resolves to nothing in Grails 8.
-- Search the application's asset manifests, GSPs, and Sass imports for `%` and `*` in asset paths. Write one `%` per directory, as `create-app` generates (`webjars/jquery/%/dist/jquery.js`), or `%%` (or `**`) for any number of directories, none included (`webjars/%%/dist/jquery.js`).
+- Search the application's asset manifests, GSPs, and Sass imports for `%` and `*` in asset paths. Write one `%` per directory, as `create-app` generates (`webjars/jquery/%/dist/jquery.js`), or `%%` (or `**`) for zero or more directories (`webjars/%%/dist/jquery.js`).
 - In a CSS `*= require` block, use `%` and `%%`, never `*` or `**`, because `*/` ends the comment.
-- When several versions match, the highest wins. Hidden directories never match, and a wildcard inside a file name, such as `jquery-%.js`, does not resolve.
+- When several versions match, the highest wins, including for paths with one `%` per directory. Hidden directories never match, and a wildcard inside a file name, such as `jquery-%.js`, does not resolve.
+- A path that no longer resolves does not fail the build: `assetCompile` logs `Unable to Locate Asset: <path>` and leaves the file out, and an `<asset:...>` tag renders the path unchanged, so the browser cannot load it. Check the `assetCompile` output for that warning after upgrading.
 - The `includes` and `excludes` patterns of the `assets` block in `build.gradle` are not affected.
 
 ## TagLibs and Tests
