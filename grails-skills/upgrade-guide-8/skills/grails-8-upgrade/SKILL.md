@@ -74,6 +74,15 @@ Grails 8 no longer applies the `io.spring.dependency-management` plugin by defau
 - Grails now uses Gradle native `platform()` dependency management with the Grails BOM.
 - The Grails Gradle Plugin auto-applies the selected Grails BOM to declarable configurations.
 - Existing version overrides in `gradle.properties` and `ext['property.version']` still work through the bundled `org.apache.grails.gradle.bom-property-overrides` plugin.
+- Grails BOMs now follow the upstream BOM property names: an override of a version Spring Boot also manages uses Spring Boot's property name, and for a module Spring Boot manages through an imported BOM, the property Spring Boot imports that BOM with. Rename Grails-specific overrides, because a property no BOM declares is silently ignored:
+
+| Grails 7 or earlier Grails 8 property | Grails 8 property |
+|---------------------------------------|-------------------|
+| `jackson.version`, `jackson2.version` | `jackson-2-bom.version` (Jackson 2, `com.fasterxml.jackson.*`) |
+| `jackson3.version` | `jackson-bom.version` (Jackson 3, `tools.jackson.*`, the default) |
+| `jackson-bom.version` set to a 2.x version (Spring Boot 3's name for Jackson 2) | `jackson-2-bom.version`; in Grails 8 `jackson-bom.version` sets Jackson 3, so a 2.x value makes dependency resolution fail |
+| `neo4j-driver.version` (`grails-neo4j-bom`) | `neo4j-java-driver.version` |
+
 - Replace `grails { springDependencyManagement = false }` with `grails { bom = null }` for new builds that intentionally opt out.
 - If Spring DM was used to pin arbitrary dependencies, replace it with direct dependencies or Gradle `resolutionStrategy.force` where a transitive version must be forced.
 - If strict BOM behavior is required, explicitly use `enforcedPlatform("org.apache.grails:grails-bom:$grailsVersion")`.
@@ -348,4 +357,5 @@ class BookServiceSpec extends Specification {
 - Do not keep an old full `grails.mime.types` block if the intent is to extend the new defaults. Use `grails.mime.mergeDefaults`.
 - Do not keep `purgeTagLibMetaClass` in tests. It is removed.
 - Do not use `javax.*` imports. Grails 8 continues the Jakarta baseline.
+- Do not override a managed version under a Grails-specific property name. Use the upstream (Spring Boot) property name; an override no BOM declares changes nothing and reports nothing.
 - Do not ignore plugin compatibility. Spring Boot 4 and Spring Framework 7 removals often surface first through plugins.
