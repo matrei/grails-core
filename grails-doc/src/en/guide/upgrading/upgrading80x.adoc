@@ -4434,3 +4434,63 @@ is still bound as midnight by `yyyy-MM-dd`, losing the time. Add a format that r
 such as `yyyy-MM-dd HH:mm`, to keep the time.
 
 The date scalars of GraphQL, which read `grails.databinding.dateFormats` too, are not changed.
+
+==== 79. Stricter Closure Typing for GORM Criteria Closures
+
+GORM's criteria closure methods (`where`, `whereLazy`, `build`, `buildLazy`, `projections`,
+`and`, `or`, `not`, `find`, `get`, `list`, `count`, `asBoolean` and the closure subquery forms
+of `in`, `inList`, `notIn`, `eqAll`, `gtAll`, `ltAll`, `geAll`, `leAll`, `gtSome`, `geSome`,
+`ltSome` and `leSome`) now declare
+`strategy = Closure.DELEGATE_FIRST` in their `@DelegatesTo` annotations. This matches the
+resolve strategy GORM already applies at runtime and fixes a `@CompileStatic` bug where the
+restrictions of a criteria closure nested inside another criteria closure were added to the
+enclosing criteria instead of the new one. Projection blocks resolved against the enclosing
+criteria for the same reason, silently dropping their projections. See
+https://github.com/apache/grails-core/issues/16425[Issue #16425].
+
+Statically compiled applications can be affected in two ways.
+
+**Forwarding a `Closure` parameter to one of these methods no longer compiles.** A method
+`Closure` parameter with the default `OWNER_FIRST` strategy cannot be passed to a
+`DELEGATE_FIRST` parameter:
+
+[source,groovy]
+----
+@CompileStatic
+static DetachedCriteria<Book> withExtra(Closure extra) {
+    new DetachedCriteria<Book>(Book).where(extra)
+    // [Static type checking] - Closure parameter with resolve strategy OWNER_FIRST
+    // passed to method with resolve strategy DELEGATE_FIRST
+}
+----
+
+Declare the same strategy on your parameter, or cast the argument:
+
+[source,groovy]
+----
+static DetachedCriteria<Book> withExtra(
+        @DelegatesTo(value = DetachedCriteria, strategy = Closure.DELEGATE_FIRST) Closure extra) {
+    new DetachedCriteria<Book>(Book).where(extra)
+}
+
+// or
+new DetachedCriteria<Book>(Book).where((Closure) extra)
+----
+
+**Name resolution inside a criteria closure now prefers the criteria delegate**, which is
+what dynamic code already did. A property or method that exists both on the enclosing class
+and on the criteria now resolves to the criteria:
+
+[source,groovy]
+----
+@CompileStatic
+class BookQueries {
+    List<Order> getOrders() { ... }
+
+    DetachedCriteria<Book> query() {
+        new DetachedCriteria<Book>(Book).where {
+            inList 'name', orders    // now reads the criteria's orders, not getOrders()
+        }
+    }
+}
+----
