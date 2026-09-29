@@ -332,3 +332,39 @@ class FoliosController extends RestfulController<Folio> {
 class Pamphlet {
     Long id
 }
+
+class TourGuide {
+    Long id
+}
+
+/**
+ * Serves {@code TourGuide} in the default namespace, under a name of more than one word.
+ */
+@Artefact('Controller')
+class CityGuidesController extends RestfulController<TourGuide> {
+    CityGuidesController() {
+        super(TourGuide)
+    }
+}
+
+/**
+ * One of two {@code backOffice} controllers serving {@code TourGuide}, neither named after it, so only the
+ * controller handling the request settles which of them a link rendered in {@code backOffice} targets.
+ */
+@Artefact('Controller')
+class TourDeskController extends RestfulController<TourGuide> {
+    static namespace = 'backOffice'
+
+    TourDeskController() {
+        super(TourGuide)
+    }
+}
+
+@Artefact('Controller')
+class GuideLedgerController extends RestfulController<TourGuide> {
+    static namespace = 'backOffice'
+
+    GuideLedgerController() {
+        super(TourGuide)
+    }
+}

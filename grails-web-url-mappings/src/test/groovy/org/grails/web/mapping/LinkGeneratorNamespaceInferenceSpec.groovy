@@ -23,6 +23,7 @@ import ch.qos.logback.classic.Level
 import grails.core.DefaultGrailsApplication
 import grails.util.GrailsWebMockUtil
 import grails.web.CamelCaseUrlConverter
+import grails.web.HyphenatedUrlConverter
 import grails.web.mapping.UrlCreator
 import grails.web.mapping.UrlMappingsHolder
 import org.apache.grails.core.testing.support.LogCapture
@@ -286,6 +287,17 @@ class LinkGeneratorNamespaceInferenceSpec extends Specification {
         then: 'the resource link is namespaced per request (no cache collision)'
         adminUrl == '/bar/admin/report/index'
         salesUrl == '/bar/sales/report/index'
+    }
+
+    def "the controller handling the request is recognised by the name a hyphenated URL gave it"() {
+        given: 'a request mapped from /admin/book-shelf/..., which holds the controller name as the URL wrote it'
+        bindRequest('book-shelf', 'admin')
+        def generator = createGenerator()
+        generator.grailsUrlConverter = new HyphenatedUrlConverter()
+
+        expect: 'a link naming the controller either way keeps the request namespace, even when it targets a plugin'
+        generator.getDefaultNamespace('book-shelf', 'someplugin') == 'admin'
+        generator.getDefaultNamespace('bookShelf', 'someplugin') == 'admin'
     }
 
     private static List<String> warningsAbout(LogCapture logCapture, String subject) {

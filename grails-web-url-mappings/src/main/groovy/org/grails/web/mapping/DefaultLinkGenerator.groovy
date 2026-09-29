@@ -402,7 +402,7 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
         }
         // Preserve the historical behaviour of reusing the current request namespace when the link
         // targets the controller currently handling the request.
-        if (Objects.equals(controller, requestStateLookupStrategy.controllerName)) {
+        if (isRequestController(controller, requestStateLookupStrategy.controllerName)) {
             return requestStateLookupStrategy.controllerNamespace
         }
 
@@ -585,7 +585,7 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
      *
      * <ol>
      *   <li>the controller handling the current request, if it is a candidate in the targeted
-     *       namespace</li>
+     *       namespace, whether the request holds its name as written or as the URL converter writes it</li>
      *   <li>the candidate in the targeted namespace</li>
      *   <li>the candidate in the default namespace</li>
      *   <li>the candidate in any namespace</li>
@@ -611,10 +611,11 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
         String currentNamespace = requestStateLookupStrategy.controllerNamespace
         String targetNamespace = explicitNamespace ? namespace : currentNamespace
         String currentController = requestStateLookupStrategy.controllerName
-        if (currentController != null) {
-            ControllerRef current = new ControllerRef(currentController, currentNamespace)
-            if (Objects.equals(current.namespace, targetNamespace) && candidates.contains(current)) {
-                return current
+        if (currentController != null && Objects.equals(currentNamespace, targetNamespace)) {
+            for (ControllerRef candidate in candidates) {
+                if (Objects.equals(candidate.namespace, currentNamespace) && isRequestController(candidate.name, currentController)) {
+                    return candidate
+                }
             }
         }
         ControllerRef chosen = chooseWithin(candidates, conventionalName, true, targetNamespace)
@@ -628,6 +629,19 @@ class DefaultLinkGenerator implements LinkGenerator, PluginManagerAware {
             }
         }
         return chooseWithin(candidates, conventionalName, false, null)
+    }
+
+    /**
+     * Whether a logical controller name is that of the controller handling the request. The request holds
+     * the name its URL mapping gave it, which a mapping taking it from the URL writes in the URL
+     * converter's form: {@code tour-desk} rather than {@code tourDesk} under the hyphenated converter.
+     */
+    private boolean isRequestController(String controller, String requestController) {
+        if (controller == null || requestController == null) {
+            return false
+        }
+        return controller == requestController ||
+                (grailsUrlConverter != null && grailsUrlConverter.toUrlElement(controller) == requestController)
     }
 
     /**

@@ -21,6 +21,8 @@ package org.grails.web.mapping
 import ch.qos.logback.classic.Level
 
 import grails.core.DefaultGrailsApplication
+import grails.core.GrailsApplication
+import grails.core.GrailsControllerClass
 import grails.util.GrailsWebMockUtil
 import grails.web.CamelCaseUrlConverter
 import grails.web.HyphenatedUrlConverter
@@ -42,11 +44,13 @@ import org.grails.web.mapping.domainlink.ChapterApiController
 import org.grails.web.mapping.domainlink.ChapterController
 import org.grails.web.mapping.domainlink.Chronicle
 import org.grails.web.mapping.domainlink.ChroniclesController
+import org.grails.web.mapping.domainlink.CityGuidesController
 import org.grails.web.mapping.domainlink.Folio
 import org.grails.web.mapping.domainlink.FolioController
 import org.grails.web.mapping.domainlink.FoliosController
 import org.grails.web.mapping.domainlink.Gadget
 import org.grails.web.mapping.domainlink.GadgetsController
+import org.grails.web.mapping.domainlink.GuideLedgerController
 import org.grails.web.mapping.domainlink.HomeController
 import org.grails.web.mapping.domainlink.Invoice
 import org.grails.web.mapping.domainlink.InvoiceController
@@ -64,10 +68,13 @@ import org.grails.web.mapping.domainlink.PeopleController
 import org.grails.web.mapping.domainlink.Person
 import org.grails.web.mapping.domainlink.Tag
 import org.grails.web.mapping.domainlink.TagsController
+import org.grails.web.mapping.domainlink.TourDeskController
+import org.grails.web.mapping.domainlink.TourGuide
 import org.grails.web.mapping.domainlink.Widget
 import org.grails.web.mapping.domainlink.WidgetsController
 import org.grails.web.mapping.domainlink.archive.Item as ArchiveItem
 import org.grails.web.mapping.domainlink.catalog.Item as CatalogItem
+import org.grails.support.MockApplicationContext
 import org.grails.web.util.WebUtils
 import org.springframework.web.context.request.RequestContextHolder
 
@@ -534,7 +541,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         given: 'the controllers record their actions as the hyphenated converter writes them'
         def converter = new HyphenatedUrlConverter()
         for (controller in grailsApplication.getArtefacts(ControllerArtefactHandler.TYPE)) {
-            ((grails.core.GrailsControllerClass) controller).registerUrlConverter(converter)
+            ((GrailsControllerClass) controller).registerUrlConverter(converter)
         }
         def generator = createGenerator()
         generator.grailsUrlConverter = converter
@@ -563,6 +570,29 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         item = kind == 'archive' ? new ArchiveItem(id: 1) : new CatalogItem(id: 1)
     }
 
+    def "under the hyphenated URL converter a link rendered by #rendered stays in it"() {
+        given: 'three controllers serve TourGuide, two of them in backOffice and none named after it'
+        def application = new DefaultGrailsApplication(CityGuidesController, TourDeskController, GuideLedgerController).tap {
+            initialise()
+        }
+        def generator = createHyphenatedGenerator(application)
+
+        and: 'the request holds its controller name as the URL wrote it, and its namespace as the controller declares it'
+        bindRequest(requestName, namespace)
+
+        expect:
+        generator.link(resource: new TourGuide(id: 1), action: 'show') == expected
+
+        and: 'so does a redirect to the instance, which asks for a GET'
+        generator.link(resource: new TourGuide(id: 1), method: 'GET') == expected
+
+        where:
+        rendered                | requestName    | namespace    || expected
+        'TourDeskController'    | 'tour-desk'    | 'backOffice' || '/bar/backOffice/tour-desk/show/1'
+        'GuideLedgerController' | 'guide-ledger' | 'backOffice' || '/bar/backOffice/guide-ledger/show/1'
+        'CityGuidesController'  | 'city-guides'  | null         || '/bar/city-guides/show/1'
+    }
+
     private static List<String> warningsAbout(LogCapture logCapture, String subject) {
         logCapture.events.findAll { it.level == Level.WARN && it.formattedMessage.contains(subject) }*.formattedMessage
     }
@@ -571,6 +601,28 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         def webRequest = GrailsWebMockUtil.bindMockWebRequest()
         webRequest.setControllerName(controllerName)
         webRequest.setControllerNamespace(namespace)
+    }
+
+    /**
+     * A generator for the application under the hyphenated URL converter, with the controllers recording
+     * their actions as it writes them and the reverse mappings a generated application declares.
+     */
+    private DefaultLinkGenerator createHyphenatedGenerator(DefaultGrailsApplication application) {
+        def converter = new HyphenatedUrlConverter()
+        for (controller in application.getArtefacts(ControllerArtefactHandler.TYPE)) {
+            ((GrailsControllerClass) controller).registerUrlConverter(converter)
+        }
+        def ctx = new MockApplicationContext()
+        ctx.registerMockBean(GrailsApplication.APPLICATION_ID, application)
+        def generator = new DefaultLinkGenerator(BASE_URL, CONTEXT)
+        generator.grailsUrlConverter = converter
+        generator.grailsApplication = application
+        generator.mappingContext = createMappingContext()
+        generator.urlMappingsHolder = new DefaultUrlMappingsHolder(new DefaultUrlMappingEvaluator(ctx).evaluateMappings {
+            "/$controller/$action?/$id?(.$format)?"()
+            "/$namespace/$controller/$action?/$id?(.$format)?"()
+        })
+        generator
     }
 
     private CachingLinkGenerator createCachingGenerator(DefaultGrailsApplication application) {
@@ -596,6 +648,7 @@ class LinkGeneratorResourceControllerSpec extends Specification {
         context.addPersistentEntity(Pamphlet)
         context.addPersistentEntity(CatalogItem)
         context.addPersistentEntity(ArchiveItem)
+        context.addPersistentEntity(TourGuide)
         context
     }
 
