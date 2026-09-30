@@ -23,6 +23,7 @@ import java.util.jar.JarFile
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 
+import org.gradle.api.GradleException
 import org.gradle.api.NamedDomainObjectProvider
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -35,6 +36,7 @@ import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.file.FileCollection
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskContainer
@@ -358,6 +360,22 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
         dependency
     }
 
+    /**
+     * Returns the application main class for a task that runs against the application, or fails the task with
+     * an explanation when the project has none, as is the case for a plugin without an {@code Application} class.
+     *
+     * @param mainClass the main class found by the {@code findMainClass} task
+     * @param taskName the name of the task that requires the main class
+     * @return the name of the main class
+     */
+    static String requireMainClass(Provider<String> mainClass, String taskName) {
+        if (!mainClass.present) {
+            throw new GradleException("The '${taskName}' task requires an application class with a main method, but none was found. " +
+                    "Add an Application class, or set 'springBoot.mainClass' if the project already has one.")
+        }
+        mainClass.get()
+    }
+
     @CompileDynamic
     protected void configureApplicationCommands(Project project) {
         def applicationContextCommands = FactoriesLoaderSupport.loadFactoryNames(APPLICATION_CONTEXT_COMMAND_CLASS,
@@ -398,7 +416,7 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
                         def appClassProvider = GrailsGradlePlugin.getMainClassProvider(project)
 
                         it.doFirst {
-                            args << appClassProvider.get()
+                            args << requireMainClass(appClassProvider, it.name)
                             it.args(args)
                         }
                     }
@@ -477,7 +495,7 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
                 def appClass = GrailsGradlePlugin.getMainClassProvider(project)
 
                 it.doFirst {
-                    it.args(appClass.get())
+                    it.args(requireMainClass(appClass, it.name))
                 }
             }
         }
@@ -502,7 +520,7 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
                 def appClass = GrailsGradlePlugin.getMainClassProvider(project)
 
                 it.doFirst {
-                    it.args(appClass.get())
+                    it.args(requireMainClass(appClass, it.name))
                 }
             }
         }
@@ -534,7 +552,7 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
                     def appClassProvider = GrailsGradlePlugin.getMainClassProvider(project)
 
                     it.doFirst {
-                        args << appClassProvider.get()
+                        args << requireMainClass(appClassProvider, it.name)
                         it.args(args)
                     }
                 }
@@ -567,7 +585,7 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
                     def appClassProvider = GrailsGradlePlugin.getMainClassProvider(project)
 
                     it.doFirst {
-                        args << appClassProvider.get()
+                        args << requireMainClass(appClassProvider, it.name)
                         it.args(args)
                     }
 
