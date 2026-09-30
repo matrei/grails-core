@@ -96,14 +96,18 @@ class ProxyInstanceMetaClassSpec extends Specification {
         0 * session.retrieve(_, _)
     }
 
-    void "invokeMethod resolves the target and delegates for getTarget/initialize"() {
+    void "invokeMethod returns the resolved target for getTarget/initialize without delegating"() {
         given:
         ProxyInstanceMetaClass metaClass = newMetaClass()
-        session.retrieve(ProxyInstanceTestTarget, 11L) >> target
-        delegate.invokeMethod(target, methodName, [] as Object[]) >> target
 
-        expect:
-        metaClass.invokeMethod(proxy, methodName, [] as Object[]).is(target)
+        when:
+        Object result = metaClass.invokeMethod(proxy, methodName, [] as Object[])
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        0 * delegate.invokeMethod(_, _, _)
+        result.is(target)
+        metaClass.isProxyInitiated()
 
         where:
         methodName << ['getTarget', 'initialize']
@@ -339,6 +343,117 @@ class ProxyInstanceMetaClassSpec extends Specification {
 
         expect:
         metaClass.getAttribute(proxy, 'name') == 'resolved-name'
+    }
+
+    void "sender-aware invokeMethod applies the proxy rules before delegating"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+
+        when:
+        Object id = metaClass.invokeMethod(ProxyInstanceMetaClassSpec, proxy, 'getId', [] as Object[], false, false)
+
+        then:
+        id == 11L
+        0 * session.retrieve(_, _)
+        0 * delegate.invokeMethod(*_)
+
+        when:
+        Object result = metaClass.invokeMethod(ProxyInstanceMetaClassSpec, proxy, 'toString', [] as Object[], false, false)
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        1 * delegate.invokeMethod(ProxyInstanceMetaClassSpec, target, 'toString', [] as Object[], false, false) >> 'resolved'
+        result == 'resolved'
+    }
+
+    void "sender-aware invokeMethod keeps setMetaClass with a MetaClass argument on the proxy"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+        MetaClass newMetaClassArg = Mock(MetaClass)
+
+        when:
+        metaClass.invokeMethod(ProxyInstanceMetaClassSpec, proxy, 'setMetaClass', [newMetaClassArg] as Object[], false, false)
+
+        then:
+        1 * delegate.invokeMethod(ProxyInstanceMetaClassSpec, proxy, 'setMetaClass', [newMetaClassArg] as Object[], false, false)
+        0 * session.retrieve(_, _)
+    }
+
+    void "sender-aware getProperty applies the proxy rules before delegating"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+
+        when:
+        Object id = metaClass.getProperty(ProxyInstanceMetaClassSpec, proxy, 'id', false, false)
+        Object clazz = metaClass.getProperty(ProxyInstanceMetaClassSpec, proxy, 'class', false, false)
+
+        then:
+        id == 11L
+        clazz == ProxyInstanceTestTarget
+        1 * delegate.getProperty(ProxyInstanceMetaClassSpec, proxy, 'class', false, false) >> ProxyInstanceTestTarget
+        0 * session.retrieve(_, _)
+
+        when:
+        Object name = metaClass.getProperty(ProxyInstanceMetaClassSpec, proxy, 'name', false, false)
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        1 * delegate.getProperty(ProxyInstanceMetaClassSpec, target, 'name', false, false) >> 'resolved-name'
+        name == 'resolved-name'
+    }
+
+    void "sender-aware setProperty writes regular properties to the target and metaClass to the proxy"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+        MetaClass newMetaClassArg = Mock(MetaClass)
+
+        when:
+        metaClass.setProperty(ProxyInstanceMetaClassSpec, proxy, 'metaClass', newMetaClassArg, false, false)
+
+        then:
+        1 * delegate.setProperty(ProxyInstanceMetaClassSpec, proxy, 'metaClass', newMetaClassArg, false, false)
+        0 * session.retrieve(_, _)
+
+        when:
+        metaClass.setProperty(ProxyInstanceMetaClassSpec, proxy, 'name', 'new-name', false, false)
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        1 * delegate.setProperty(ProxyInstanceMetaClassSpec, target, 'name', 'new-name', false, false)
+    }
+
+    void "sender-aware getAttribute applies the proxy rules before delegating"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+
+        when:
+        Object id = metaClass.getAttribute(ProxyInstanceMetaClassSpec, proxy, 'id', false)
+        Object initialized = metaClass.getAttribute(ProxyInstanceMetaClassSpec, proxy, 'initialized', false)
+
+        then:
+        id == 11L
+        initialized == false
+        0 * session.retrieve(_, _)
+
+        when:
+        Object name = metaClass.getAttribute(ProxyInstanceMetaClassSpec, proxy, 'name', false)
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        1 * delegate.getAttribute(ProxyInstanceMetaClassSpec, target, 'name', false) >> 'resolved-name'
+        name == 'resolved-name'
+    }
+
+    void "sender-aware setAttribute always resolves and delegates to the target"() {
+        given:
+        ProxyInstanceMetaClass metaClass = newMetaClass()
+
+        when:
+        metaClass.setAttribute(ProxyInstanceMetaClassSpec, proxy, 'name', 'new-name', false, false)
+
+        then:
+        1 * session.retrieve(ProxyInstanceTestTarget, 11L) >> target
+        1 * delegate.setAttribute(ProxyInstanceMetaClassSpec, target, 'name', 'new-name', false, false)
     }
 
     void "setAttribute always resolves and delegates to the target"() {
