@@ -22,10 +22,14 @@ pluginManagement {
     includeBuild('../build-logic') {
         name = 'build-logic-root'
     }
+    apply from: file('../gradle/plugin-repositories.gradle')
+    repositories {
+        configurePluginRepositories(delegate)
+    }
 }
 
 plugins {
-	id 'com.gradle.develocity' version '4.1.1'
+	id 'com.gradle.develocity' version '4.2.2'
 	id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.3'
     id 'org.apache.grails.buildsrc.repo'
 	id 'com.autonomousapps.build-health' version '3.5.1'

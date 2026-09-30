@@ -18,7 +18,9 @@
  */
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = '0.1'
@@ -49,7 +51,7 @@ dependencies {
     testAndDevelopmentOnly platform(project(':grails-bom'))
     testAndDevelopmentOnly 'org.webjars.npm:jquery'
 
-    runtimeOnly "org.hibernate:hibernate-ehcache:$hibernate5Version", {
+    runtimeOnly 'org.hibernate:hibernate-ehcache', {
         // exclude javax variant of hibernate-core
         exclude group: 'org.hibernate', module: 'hibernate-core'
     }

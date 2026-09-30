@@ -40,13 +40,14 @@ jobs:
       actions: write # in case there are pending changes to release.yml in the target branch
     steps:
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TAG }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: "⚙️ Run post-release"
         uses: apache/grails-github-actions/post-release@asf
         env:
+          PR_LABELS: skip-changelog
           RELEASE_SCRIPT_PATH: '.github/scripts/setSnapshotGrailsVersion.sh'
       - name: "🌎 MANUAL - Create Blog Post"
         run: |
@@ -65,7 +66,8 @@ jobs:
         run: |
           echo "::group::Deploy the new SNAPSHOT to Forge - MANUAL"
           echo "After the Close Release PR is merged, deploy the new SNAPSHOT to Forge via:"
-          echo "https://github.com/apache/grails-core/actions/workflows/forge-deploy-snapshot.yml"
+          echo "https://github.com/apache/grails-core/actions/workflows/forge-deploy-aws.yml"
+          echo "Use workflow from the snapshot branch. Slot: snapshot."
           echo "::endgroup::"
       - name: "🌎 MANUAL - Add version to the Grails Website"
         run: |

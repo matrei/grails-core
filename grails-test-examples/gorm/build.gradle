@@ -19,7 +19,9 @@
 
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = '0.1'
@@ -41,7 +43,7 @@ dependencies {
     }
 
     implementation 'org.apache.grails:grails-data-hibernate5'
-    runtimeOnly "org.hibernate:hibernate-ehcache:$hibernate5Version", {
+    runtimeOnly 'org.hibernate:hibernate-ehcache', {
         // exclude javax variant of hibernate-core
         exclude group: 'org.hibernate', module: 'hibernate-core'
     }
@@ -60,6 +62,7 @@ dependencies {
     console 'org.apache.grails:grails-console'
 
     integrationTestImplementation testFixtures('org.apache.grails:grails-geb')
+    integrationTestImplementation project(':grails-testing-support-http-client')
 }
 
 apply {

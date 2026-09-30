@@ -79,6 +79,26 @@ class PublishPlugin implements Plugin<Project> {
         disableSigningWhenTesting(project)
 
         project.plugins.withId('maven-publish') {
+            // Ensure Gradle module metadata includes resolved versions for all dependencies.
+            // Without this, dependencies declared without an explicit version (relying on a
+            // platform/BOM) are published with no version in the .module file, causing
+            // resolution failures for consumers since Gradle prefers .module over .pom.
+            // Only apply to non-platform projects since java-platform has no runtimeClasspath.
+            if (!project.pluginManager.hasPlugin('java-platform')) {
+                project.extensions.configure(PublishingExtension) { PublishingExtension pe ->
+                    pe.publications.withType(MavenPublication).configureEach { MavenPublication pub ->
+                        pub.versionMapping { strategy ->
+                            strategy.usage('java-api') { variant ->
+                                variant.fromResolutionOf('runtimeClasspath')
+                            }
+                            strategy.usage('java-runtime') { variant ->
+                                variant.fromResolutionResult()
+                            }
+                        }
+                    }
+                }
+            }
+
             def artifactsTask = configurePublishedArtifacts(project)
 
             configureChecksums(project, artifactsTask)
@@ -231,16 +251,24 @@ class PublishPlugin implements Plugin<Project> {
             emeritus('basecamp', 'Joshua Burnett', project),
             emeritus('bluesliverx','Brian Saville', project),
             emeritus('bobbywarner', 'Bobby Warner', project),
+            emeritus('briancoles', 'Brian Coles', project),
             emeritus('burtbeckwith', 'Burt Beckwith', project),
+            emeritus('candrews', 'Craig Andrews', project),
             emeritus('davidkron', 'David Kron', project),
+            emeritus('davidseiler', 'David Seiler', project),
             emeritus('delight', 'Konstantinos Kostarellis', project),
             emeritus('erawat','Erawat Chamanont', project),
             emeritus('erichelgeson','Eric Helgeson', project),
+            emeritus('florianlangenhahn', 'Florian Langenhahn', project),
             emeritus('fordguo','Ford Guo', project),
+            emeritus('germansancho', 'German Sancho', project),
             emeritus('houbie','Ivo Houbrechts', project),
             emeritus('jameskleeh', 'James Kleeh', project),
             emeritus('jbrisbin','Jon Brisbin', project),
             emeritus('jeffscottbrown', 'Jeff Brown', project),
+            emeritus('johnengelman', 'John Engelman', project),
+            emeritus('johnmulhern', 'John Mulhern', project),
+            emeritus('jordonsaardchit', 'Jordon Saardchit', project),
             emeritus('jrudolph','Jason Rudolph', project),
             emeritus('k4zuki', 'Kazuki Yamamoto', project),
             emeritus('leebutts','Lee Butts', project),
@@ -248,6 +276,7 @@ class PublishPlugin implements Plugin<Project> {
             emeritus('ilopmar', 'Iván López', project),
             emeritus('marceloverdijk','Marcel Overdijk', project),
             emeritus('marcpalmer', 'Marc Palmer', project),
+            emeritus('michaelcameron', 'Michael Cameron', project),
             emeritus('mpccolorado','Martín Caballero', project),
             emeritus('nebolsin','Sergey Nebolsin', project),
             emeritus('niravassar','Nirav Assar', project),
@@ -261,9 +290,11 @@ class PublishPlugin implements Plugin<Project> {
             emeritus('rstepanenko','Roman Stepanenko', project),
             emeritus('rvanderwerf','Ryan Vanderwerf', project),
             emeritus('sarmbruster', 'Stefan Armbruster', project),
+            emeritus('shaunjurgemeyer', 'Shaun Jurgemeyer', project),
             emeritus('smaldini','Stephane Maldini', project),
             emeritus('tkvw','Dennie de Lange', project),
             emeritus('tomwidmer','Tom Widmer', project),
+            emeritus('vitaliisamolovskikh','Vitalii Samolovskikh', project),
             emeritus('yamkazu','Kazuki Yamamoto', project),
             emeritus('zanthrash','Zan Thrash', project),
             emeritus('ziegfried', 'Siegfried Puchbauer', project),
@@ -274,6 +305,7 @@ class PublishPlugin implements Plugin<Project> {
             contributor('JudeRV', 'judevargas22@gmail.com', project),
             contributor('acanby', 'Andrew Canby', project),
             contributor('aeisenberg', 'Andrew Eisenberg', project),
+            contributor('aitmanas', 'Aidas', project),
             contributor('and-dmitry', 'Dmitry Andreychuk', project),
             contributor('andersaaberg', 'Anders Aaberg', project),
             contributor('aulea', 'Alar Aule', project),
@@ -298,6 +330,7 @@ class PublishPlugin implements Plugin<Project> {
             contributor('jprinet', 'Jérôme Prinet', project),
             contributor('jwagenleitner', 'John Wagenleitner', project),
             contributor('lucastex', 'Lucas Frare Teixeira', project),
+            contributor('matrixcrawler', 'Johannes Brunswicker', project),
             contributor('mburak', 'Matias Burak', project),
             contributor('micfra', 'Michael Frankfurter', project),
             contributor('mikea', 'Mike Aizatsky', project),

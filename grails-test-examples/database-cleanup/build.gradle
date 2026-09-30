@@ -19,7 +19,9 @@
 
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = '0.1'
@@ -35,7 +37,7 @@ dependencies {
     implementation 'com.h2database:h2'
     implementation 'org.apache.grails:grails-layout'
     implementation 'org.apache.grails:grails-data-hibernate5'
-    runtimeOnly "org.hibernate:hibernate-ehcache:$hibernate5Version", {
+    runtimeOnly 'org.hibernate:hibernate-ehcache', {
         exclude group: 'org.hibernate', module: 'hibernate-core'
     }
     runtimeOnly "org.jboss.spec.javax.transaction:jboss-transaction-api_1.3_spec:$jbossTransactionApiVersion", {

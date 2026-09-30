@@ -40,6 +40,7 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.DependencyResolveDetails
 import org.gradle.api.artifacts.DependencySet
+import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.attributes.AttributeMatchingStrategy
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.file.FileCollection
@@ -89,6 +90,8 @@ import javax.inject.Inject
 class GrailsGradlePlugin extends GroovyPlugin {
 
     public static final String APPLICATION_CONTEXT_COMMAND_CLASS = 'grails.dev.commands.ApplicationCommand'
+    private static final String CLI_PID_FILE_PROPERTY = 'grails.cli.pid.file'
+    private static final String RUN_APP_PID_FILE_NAME = 'run-app.pid'
 
     List<Class<Plugin>> basePluginClasses = [IntegrationTestGradlePlugin] as List<Class<Plugin>>
     List<String> excludedGrailsAppSourceDirs = ['migrations', 'assets']
@@ -142,6 +145,8 @@ class GrailsGradlePlugin extends GroovyPlugin {
         configureConsoleTask(project)
 
         configureForkSettings(project, grailsVersion)
+
+        configureBootRunPidFile(project)
 
         configureJavaCompatibilityArgs(project)
 
@@ -366,22 +371,11 @@ class GrailsGradlePlugin extends GroovyPlugin {
 
             project.logger.lifecycle('Micronaut Support Detected for {}', project.name)
 
-            final String micronautPlatformVersion = project.properties['micronautPlatformVersion']
-            if (!micronautPlatformVersion) {
-                throw new GradleException('`micronautPlatformVersion` property must be set to use the Grails Micronaut plugin.')
-            }
-
-            // grails-micronaut exports the platform, but force the version to the user specified version
-            project.configurations.configureEach { Configuration configuration ->
-                configuration.resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-                    String dependencyName = details.requested.name
-                    String group = details.requested.group
-                    if (group == 'io.micronaut.platform' && dependencyName.startsWith('micronaut-platform')) {
-                        project.logger.info('Forcing Micronaut Platform version to {}', micronautPlatformVersion)
-                        details.useVersion(micronautPlatformVersion)
-                    }
-                }
-            }
+            // Validate that grails-micronaut-bom is applied as enforcedPlatform. The BOM is now the
+            // single source of truth for the Micronaut platform version: applying it as
+            // enforcedPlatform pins io.micronaut.platform:micronaut-platform with a strict
+            // constraint that no transitive can override.
+            validateMicronautBom(project)
 
             project.logger.info('Configuring CLASSIC boot loader for Micronaut compatibility in {}', project.name)
             project.tasks.withType(BootArchive).configureEach {
@@ -389,6 +383,39 @@ class GrailsGradlePlugin extends GroovyPlugin {
             }
 
         }
+    }
+
+    /**
+     * Validates that grails-micronaut-bom is applied as an enforcedPlatform when micronaut is used.
+     * The grails-micronaut-bom layers Micronaut-specific overrides (e.g. javaparser-core) on top
+     * of grails-bom; without enforcedPlatform, Micronaut's platform would override these versions
+     * via Gradle's conflict resolution. Regular Grails projects (without Micronaut) should continue
+     * to use the spring-managed versions via plain platform(:grails-bom).
+     */
+    @CompileStatic
+    protected static void validateMicronautBom(Project project) {
+        Configuration implConfig = project.configurations.findByName('implementation')
+        if (implConfig == null) {
+            return
+        }
+
+        for (Dependency dep : implConfig.dependencies) {
+            if (dep.name == 'grails-micronaut-bom' && dep instanceof ModuleDependency) {
+                Object categoryAttr = ((ModuleDependency) dep).attributes.getAttribute(
+                        org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE
+                )
+                if (categoryAttr != null && categoryAttr.toString() == org.gradle.api.attributes.Category.ENFORCED_PLATFORM) {
+                    return // correctly configured
+                }
+            }
+        }
+
+        throw new GradleException(
+                "Project '${project.name}' uses Micronaut but does not apply grails-micronaut-bom as an enforcedPlatform. " +
+                        "Micronaut's platform declares higher versions of javaparser-core and other libraries that would " +
+                        'override the grails-bom versions via conflict resolution. Change to:\n\n' +
+                        '    implementation enforcedPlatform(project(\':grails-micronaut-bom\'))\n'
+        )
     }
 
     @CompileStatic
@@ -568,6 +595,29 @@ class GrailsGradlePlugin extends GroovyPlugin {
         tasks.withType(JavaExec).configureEach(systemPropertyConfigurer.curry(grailsEnvSystemProperty ?: Environment.DEVELOPMENT.getName()))
 
         configureToolchainForForkTasks(project)
+    }
+
+    protected void configureBootRunPidFile(Project project) {
+        // Producer side of the run-app PID contract: the forked app writes its PID to 'run-app.pid'
+        // under the Gradle build directory. The CLI stop-app command resolves the PID file
+        // independently of Gradle, via BuildSettings.TARGET_DIR (the conventional <projectDir>/build).
+        // These two locations coincide only for the DEFAULT Gradle build directory; because this uses
+        // project.layout.buildDirectory, customizing it (layout.buildDirectory) would write the PID
+        // file where stop-app does not look, so that customization is not supported for stop-app.
+        Provider<RegularFile> pidFile = project.layout.buildDirectory.file(RUN_APP_PID_FILE_NAME)
+        project.pluginManager.withPlugin('org.springframework.boot') {
+            project.tasks.withType(BootRun).configureEach { BootRun task ->
+                // The path is resolved lazily at execution time via a CommandLineArgumentProvider
+                // (see GrailsAppBaseDirProvider) so it stays configuration-cache safe and does not
+                // force the build directory provider during configuration. The forked application
+                // reads this location so stop-app can locate and terminate it.
+                task.jvmArgumentProviders.add(new RunAppPidFileProvider(CLI_PID_FILE_PROPERTY, pidFile))
+
+                // Report a deliberate stop as a successful build (see BootRunExitCodeVerifier).
+                task.ignoreExitValue = true
+                task.doLast(new BootRunExitCodeVerifier())
+            }
+        }
     }
 
     /**
@@ -796,6 +846,12 @@ class GrailsGradlePlugin extends GroovyPlugin {
             project.tasks.withType(BootRun).configureEach { BootRun it ->
                 it.dependsOn(findMainClassTask)
                 it.mainClass.convention(GrailsGradlePlugin.getMainClassProvider(project))
+                // Tell Spring Boot's AnsiOutput a console is available under bootRun (System.console()
+                // is null there, so DETECT mode would otherwise emit no colors). This is set on every
+                // OS on purpose: it is not a force-on. AnsiOutput's DETECT mode still gates Windows out
+                // internally (return !OS_NAME.contains("win")), so legacy Windows consoles never receive
+                // raw ANSI escapes, while macOS/Linux and modern terminals get colored bootRun output.
+                it.systemProperty('spring.output.ansi.console-available', 'true')
             }
 
             project.tasks.withType(ResolveMainClassName).configureEach {
