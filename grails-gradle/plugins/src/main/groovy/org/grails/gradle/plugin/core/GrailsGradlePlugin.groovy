@@ -108,11 +108,6 @@ class GrailsGradlePlugin implements Plugin<Project> {
 
     private static final String SPRING_BOOT_PLUGIN = 'org.springframework.boot'
 
-    private static final String ASSET_COMPILE_TASK = 'assetCompile'
-
-    /** Where an executable jar reads its classpath from, and so where assets have to be to be found. */
-    private static final String CLASSPATH_ASSETS_PATH = 'BOOT-INF/classes/assets'
-
     private static final int TRAINING_PORT = 18080
 
     /** Not the training port: a trace and a training run are both a started application. */
@@ -990,7 +985,6 @@ ${importStatements}
 
     protected void configureAssetCompilation(Project project) {
         configureAssetPipelineLayout(project)
-        configureAssetsOnTheClasspath(project)
     }
 
     /**
@@ -1008,47 +1002,6 @@ ${importStatements}
             }
             project.tasks.named('assetCompile').configure {
                 it.destinationDirectory = project.layout.buildDirectory.dir('assetCompile/assets')
-            }
-        }
-    }
-
-    /**
-     * Packages the compiled assets where an executable jar can read them.
-     *
-     * <p>The asset pipeline plugin puts them at the root of whatever archive is built, which is
-     * where a war serves its web content from and is therefore right for a war. An executable jar
-     * has no web content: it serves assets by reading them off the classpath, and its classpath is
-     * {@code BOOT-INF/classes} -- so the same assets, at the same place, in a jar rather than a war,
-     * are packaged but unreachable, and every asset a page asks for is a 404 while the page itself
-     * renders. Adding them under the classpath directory is what makes them found.</p>
-     *
-     * <p>Only for {@code bootJar}. A war already serves them from the root, and putting them on its
-     * classpath as well would ship the same bytes twice.</p>
-     */
-    private void configureAssetsOnTheClasspath(Project project) {
-        project.pluginManager.withPlugin(SPRING_BOOT_PLUGIN) {
-            // Asked for by name when the archive needs it, rather than matched out of the task
-            // container in advance.
-            //
-            // A matching {} collection is live. Handed to project.files() it became part of
-            // bootJar's input files, so the container was reachable from the archive's state -- and
-            // resolving those inputs ran the predicate against every task registered, realizing all
-            // of them to find the one. Asking the names costs nothing and realizes nothing; only
-            // the task that is actually there is then looked up, and the file collection it returns
-            // carries the dependency on it.
-            //
-            // Still by name rather than by the plugin that registers it: the pipeline's plugin id
-            // has changed once already and the task name has not, and an application is free to
-            // register the task itself.
-            FileCollection compiledAssets = project.files(project.provider {
-                project.tasks.names.contains(ASSET_COMPILE_TASK)
-                        ? project.tasks.named(ASSET_COMPILE_TASK).get().outputs.files
-                        : project.files()
-            })
-            project.tasks.named('bootJar', AbstractCopyTask).configure { AbstractCopyTask task ->
-                task.from(compiledAssets) { CopySpec spec ->
-                    spec.into(CLASSPATH_ASSETS_PATH)
-                }
             }
         }
     }
