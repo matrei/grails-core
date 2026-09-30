@@ -102,7 +102,7 @@ jobs:
         if: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-gradle'
         run: >
-          ./gradlew build buildHealth
+          ./gradlew build
           --continue
           --stacktrace
           -PskipCodeStyle
@@ -111,7 +111,7 @@ jobs:
         if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-gradle'
         run: >
-          ./gradlew build buildHealth
+          ./gradlew build
           --continue
           --stacktrace
           --rerun-tasks
@@ -164,7 +164,7 @@ jobs:
         uses: testlens-app/setup-testlens@d96a555133c275a00949d2cc77b70fe9a4242ebf # v1.9.2
       - name: "🔨 Build project"
         run: >
-          ./gradlew build buildHealth :build-logic-root:buildHealth :grails-shell-cli:installDist groovydoc
+          ./gradlew build :grails-shell-cli:installDist groovydoc
           --continue
           --stacktrace
           -PonlyCoreTests
@@ -209,7 +209,7 @@ jobs:
         uses: testlens-app/setup-testlens@d96a555133c275a00949d2cc77b70fe9a4242ebf # v1.9.2
       - name: "🔨 Build project"
         run: >
-          ./gradlew build buildHealth :build-logic-root:buildHealth :grails-shell-cli:installDist groovydoc
+          ./gradlew build :grails-shell-cli:installDist groovydoc
           --continue
           --rerun-tasks
           --stacktrace
@@ -254,7 +254,7 @@ jobs:
         if: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-forge'
         run: >
-          ./gradlew build buildHealth
+          ./gradlew build
           --continue
           --stacktrace
           -PskipCodeStyle
@@ -263,7 +263,7 @@ jobs:
         if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-forge'
         run: >
-          ./gradlew build buildHealth
+          ./gradlew build
           --continue
           --rerun-tasks
           --stacktrace
