@@ -27,7 +27,7 @@ pluginManagement {
 plugins {
 	id 'com.gradle.develocity' version '4.2.2'
 	id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.3'
-	id 'com.autonomousapps.build-health' version '3.5.1'
+	id 'com.autonomousapps.build-health' version '3.19.2'
 }
 
 apply from: file('../gradle/dependency-analysis.settings.gradle')
@@ -91,6 +91,9 @@ rootProject.name = 'build-logic-root'
 
 include 'build-logic'
 project(':build-logic').projectDir = file('plugins')
+
+include 'vulnerability-scan'
+project(':vulnerability-scan').projectDir = file('vulnerability-scan')
 
 include 'grails-docs-core'
 project(':grails-docs-core').projectDir = file('docs-core')

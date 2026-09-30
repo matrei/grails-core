@@ -19,8 +19,31 @@
 dependencyAnalysis {
     issues {
         all {
-            onAny {
+            // Two dependencies providing the same fully qualified class name make compile and runtime
+            // behavior depend on classpath order, and are the signal of a "Maven hijack" style attack.
+            // This is the guard the plugin is applied for, so it is the only category that fails the build.
+            // The plugin only reports a duplicate when the analyzed module itself references the class.
+            //
+            // Exclusions are matched against class names, not dependency coordinates. Each entry below is
+            // a library that deliberately ships a copy of another library's classes, so both artifacts on a
+            // classpath is the documented shape of the dependency rather than a hijack.
+            onDuplicateClassWarnings {
                 severity 'fail'
+                excludeRegex(
+                        // tomcat-embed-core ships the Servlet API classes that jakarta.servlet-api also provides.
+                        '^jakarta\\.servlet\\..*',
+                        // spring-jcl and jcl-over-slf4j are both implementations of the Commons Logging API.
+                        '^org\\.apache\\.commons\\.logging\\..*',
+                        // org.eclipse.angus:jakarta.mail ships the API classes that jakarta.mail-api also provides.
+                        '^jakarta\\.mail\\..*',
+                        // jline 2 ships a copy of the Jansi classes.
+                        '^org\\.fusesource\\.jansi\\..*'
+                )
+            }
+            // Every other category (unused dependencies, transitive dependencies used directly, wrong
+            // configuration, and so on) is reported as advice only.
+            onAny {
+                severity 'warn'
             }
         }
     }
