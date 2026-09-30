@@ -21,6 +21,7 @@ package org.grails.forge.feature.database
 
 import org.grails.forge.ApplicationContextSpec
 import org.grails.forge.BuildBuilder
+import org.grails.forge.options.DevelopmentReloading
 import org.grails.forge.options.JdkVersion
 import org.grails.forge.options.TestFramework
 
@@ -35,7 +36,7 @@ class TestContainersSpec extends ApplicationContextSpec {
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:mysql"')
+        template.contains('testImplementation "org.testcontainers:testcontainers-mysql"')
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
@@ -46,7 +47,7 @@ class TestContainersSpec extends ApplicationContextSpec {
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:postgresql"')
+        template.contains('testImplementation "org.testcontainers:testcontainers-postgresql"')
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
@@ -57,7 +58,7 @@ class TestContainersSpec extends ApplicationContextSpec {
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:mssqlserver"')
+        template.contains('testImplementation "org.testcontainers:testcontainers-mssqlserver"')
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
@@ -68,7 +69,7 @@ class TestContainersSpec extends ApplicationContextSpec {
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:mongodb"')
+        template.contains('testImplementation "org.testcontainers:testcontainers-mongodb"')
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
@@ -79,7 +80,7 @@ class TestContainersSpec extends ApplicationContextSpec {
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:mongodb"')
+        template.contains('testImplementation "org.testcontainers:testcontainers-mongodb"')
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
@@ -93,30 +94,15 @@ class TestContainersSpec extends ApplicationContextSpec {
         template.contains('testImplementation "org.testcontainers:testcontainers"')
     }
 
-    void "testframework dependency is present for gradle for feature #feature and spock framework"() {
+    void "reloading dependency is present for gradle for feature #feature and devtools"() {
         when:
         def template = new BuildBuilder(beanContext)
                 .features([feature])
-                .testFramework(TestFramework.SPOCK)
+                .reloading(DevelopmentReloading.DEVTOOLS)
                 .render()
 
         then:
-        template.contains('testImplementation "org.testcontainers:spock"')
-
-        where:
-        feature << ["mongo-sync", "mysql", "postgres", "sqlserver"]
-    }
-
-    void "testframework dependency is present for gradle for feature #feature and junit framework"() {
-
-        when:
-        def template = new BuildBuilder(beanContext)
-                .features([feature])
-                .testFramework(TestFramework.JUNIT)
-                .render()
-
-        then:
-        template.contains('testImplementation "org.testcontainers:junit-jupiter"')
+        template.contains('developmentOnly "org.springframework.boot:spring-boot-devtools"')
 
         where:
         feature << ["mongo-sync", "mysql", "postgres", "sqlserver"]

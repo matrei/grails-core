@@ -19,6 +19,8 @@
 
 package grails.test.mixin
 
+import groovy.transform.CompileStatic
+
 import grails.artefact.Artefact
 import grails.converters.JSON
 import grails.converters.XML
@@ -27,6 +29,7 @@ import grails.validation.Validateable
 import grails.web.Controller
 import grails.web.mime.MimeUtility
 import org.grails.plugins.testing.GrailsMockMultipartFile
+import org.grails.validation.ConstraintEvalUtils
 import org.grails.web.servlet.mvc.SynchronizerTokensHolder
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.MessageSource
@@ -41,6 +44,37 @@ import jakarta.servlet.http.HttpServletResponse
  * @author Graeme Rocher
  */
 class ControllerUnitTestMixinTests extends Specification implements ControllerUnitTest<TestController> {
+
+    // Cache the static field helper interface for performance
+    private static final Class<?> STATIC_FIELD_HELPER = Class.forName('grails.validation.Validateable$Trait$StaticFieldHelper')
+
+    def setup() {
+        ConstraintEvalUtils.clearDefaultConstraints()
+        clearConstraintsMapCache(TestCommand)
+        clearConstraintsMapCache(SomeValidateableThing)
+    }
+
+    def cleanup() {
+        ConstraintEvalUtils.clearDefaultConstraints()
+        clearConstraintsMapCache(TestCommand)
+        clearConstraintsMapCache(SomeValidateableThing)
+    }
+
+    /**
+     * Clears the private static constraintsMapInternal field in the Validateable trait.
+     */
+    private static void clearConstraintsMapCache(Class<?> clazz) {
+        if (STATIC_FIELD_HELPER.isAssignableFrom(clazz)) {
+            def setterMethod = clazz.getMethod('grails_validation_Validateable__constraintsMapInternal$set', Map)
+            setterMethod.invoke(null, (Map) null)
+        }
+    }
+
+    @CompileStatic
+    void "mockController returns the typed controller"() {
+        expect: "no compilation error"
+        AnnotationOnlyTestController c = mockController(AnnotationOnlyTestController)
+    }
 
     void testRenderText() {
         when:
@@ -74,6 +108,11 @@ class ControllerUnitTestMixinTests extends Specification implements ControllerUn
 
         then:
         "/test/foo" == view
+    }
+
+    void 'view is null before an action is invoked'() {
+        expect:
+        view == null
     }
 
     void testRenderXml() {
@@ -703,6 +742,13 @@ class TestCommand {
 class SubController extends TestController {
     def method1() {
         super.method1()
+    }
+}
+
+@Artefact('Controller')
+class AnnotationOnlyTestController {
+    def hello() {
+        render('Hello')
     }
 }
 

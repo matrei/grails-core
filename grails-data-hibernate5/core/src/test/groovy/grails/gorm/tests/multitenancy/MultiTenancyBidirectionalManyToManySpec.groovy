@@ -30,14 +30,15 @@ import org.grails.datastore.mapping.multitenancy.resolvers.SystemPropertyTenantR
 import org.grails.orm.hibernate.HibernateDatastore
 import org.hibernate.dialect.H2Dialect
 import spock.lang.AutoCleanup
-import spock.lang.Ignore
 import spock.lang.Issue
+import spock.util.environment.RestoreSystemProperties
 import spock.lang.Shared
 import spock.lang.Specification
 
 /**
  * Created by puneetbehl on 21/03/2018.
  */
+@RestoreSystemProperties
 class MultiTenancyBidirectionalManyToManySpec extends Specification {
 
     final Map config = [
@@ -51,11 +52,10 @@ class MultiTenancyBidirectionalManyToManySpec extends Specification {
             'hibernate.hbm2ddl.auto': 'create',
     ]
 
-    @Shared DepartmentService departmentService
-    @Shared UserService userService
+    DepartmentService departmentService
+    UserService userService
 
-    @Shared @AutoCleanup HibernateDatastore datastore
-
+    @AutoCleanup HibernateDatastore datastore
 
     void setup() {
         System.setProperty(SystemPropertyTenantResolver.PROPERTY_NAME, "oci")

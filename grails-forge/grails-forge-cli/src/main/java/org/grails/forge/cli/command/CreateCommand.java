@@ -46,11 +46,11 @@ public abstract class CreateCommand extends BaseCommand implements Callable<Inte
     String name;
 
     @ReflectiveAccess
-    @CommandLine.Option(names = {"-t", "--test"}, paramLabel = "TEST", description = "Which test framework to use. Possible values: ${COMPLETION-CANDIDATES}.", completionCandidates = TestFrameworkCandidates.class, converter = TestFrameworkConverter.class)
-    TestFramework test;
+    @CommandLine.Option(names = {"-r", "--reloading"}, paramLabel = "RELOADING", description = "Which development reloading option to use. Possible values: ${COMPLETION-CANDIDATES}.", completionCandidates = DevelopmentReloadingCandidates.class, converter = DevelopmentReloadingConverter.class)
+    DevelopmentReloading reloading;
 
     @ReflectiveAccess
-    @CommandLine.Option(names = {"-g", "--gorm"}, paramLabel = "GORM Implementation", description = "Which GORM Implementation to configure. Possible values: ${COMPLETION-CANDIDATES}.", completionCandidates = GormImplCandidates.class, converter = GormImplConverter.class)
+    @CommandLine.Option(names = {"-d", "--data", "-g", "--gorm"}, paramLabel = "Grails Data Implementation", description = "Which Grails Data implementation to configure (-g, --gorm are legacy aliases). Possible values: ${COMPLETION-CANDIDATES}.", completionCandidates = GormImplCandidates.class, converter = GormImplConverter.class)
     GormImpl gormImpl;
 
     @ReflectiveAccess
@@ -96,7 +96,7 @@ public abstract class CreateCommand extends BaseCommand implements Callable<Inte
     public Integer call() throws Exception {
         if (listFeatures) {
             new ListFeatures(availableFeatures,
-                    new Options(test, gormImpl, servletImpl, getJdkVersion(), getOperatingSystem()),
+                    new Options(reloading, gormImpl, servletImpl, getJdkVersion(), getOperatingSystem()),
                     applicationType,
                     getOperatingSystem(),
                     contextFactory).output(this);
@@ -122,7 +122,7 @@ public abstract class CreateCommand extends BaseCommand implements Callable<Inte
     }
 
     public void generate(Project project, OutputHandler outputHandler) throws Exception {
-        Options options = new Options(test, gormImpl, servletImpl, getJdkVersion(), getOperatingSystem(), getAdditionalOptions());
+        Options options = new Options(reloading, gormImpl, servletImpl, getJdkVersion(), getOperatingSystem(), getAdditionalOptions());
 
         projectGenerator.generate(applicationType, project, options, getOperatingSystem(), getSelectedFeatures(), outputHandler, this);
     }

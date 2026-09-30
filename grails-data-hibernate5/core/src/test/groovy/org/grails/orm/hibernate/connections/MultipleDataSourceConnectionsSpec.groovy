@@ -112,14 +112,119 @@ class MultipleDataSourceConnectionsSpec extends Specification {
         }
     }
 
-    void "test @Transactional with connection property to non-default database"() {
+    void "an instance saved inside a named connection's own transaction is written to that connection"() {
+        given:
+        String name = "Saved in books ${UUID.randomUUID()}"
 
         when:
-        TestService testService = datastore.getDatastoreForConnection("books").getService(TestService)
-        testService.doSomething()
+        Author.books.withTransaction {
+            new Author(name: name).save(flush: true)
+        }
 
+        then: "it is in that connection's database, not the entity's default one"
+        Author.books.withTransaction { Author.books.findByName(name) } != null
+        Author.withTransaction { Author.findByName(name) } == null
+
+        and: "the class's own calls inside that connection's session and transactions read from it"
+        Author.books.withNewSession { Author.findByName(name)?.name } == name
+        Author.books.withTransaction { Author.countByName(name) } == 1
+        Author.books.withNewTransaction { Author.countByName(name) } == 1
+    }
+
+    void "the class's own calls inside a method annotated @Transactional with a connection use that connection"() {
+        given:
+        String name = "Saved through the books transaction ${UUID.randomUUID()}"
+        TestService testService = datastore.getDatastoreForConnection("books").getService(TestService)
+
+        when:
+        testService.saveAuthor(name)
+
+        then: "it is in that connection's database, not the entity's default one"
+        Author.books.withTransaction { Author.books.findByName(name) } != null
+        Author.withTransaction { Author.findByName(name) } == null
+
+        and:
+        testService.countAuthors(name) == 1
+    }
+
+    void "static GORM operations use first non-default datasource for multi datasource entity"() {
+        given: "a unique book name"
+        def uniqueName = "The Stand ${UUID.randomUUID()}"
+
+        when: "saving a book to the books datasource"
+        Book.withTransaction {
+            new Book(name: uniqueName).save(flush: true)
+        }
+
+        then: "withNewSession uses books datasource"
+        Book.withNewSession { Session s ->
+            assert s.connection().metaData.getURL() == "jdbc:h2:mem:books"
+            return true
+        }
+
+        when: "executing a static query"
+        def books = Book.withTransaction {
+            Book.executeQuery("from Book where name = :name", [name: uniqueName])
+        }
+
+        then: "the books datasource is queried"
+        books.size() == 1
+
+        when: "executing criteria query"
+        def criteriaResults = Book.withTransaction {
+            Book.withCriteria {
+                eq('name', uniqueName)
+            }
+        }
+
+        then: "criteria uses the books datasource"
+        criteriaResults.size() == 1
+
+        when: "executing update"
+        def updatedName = "The Stand Updated ${UUID.randomUUID()}"
+        int updated = Book.withTransaction {
+            Book.executeUpdate("update Book set name = :name where name = :oldName", [name: updatedName, oldName: uniqueName])
+        }
+
+        then: "update affects the books datasource"
+        updated == 1
+        Book.withTransaction { Book.findByName(updatedName) } != null
+
+        when: "executing a static transaction"
+        int count = Book.withTransaction {
+            Book.countByName(updatedName)
+        }
+
+        then: "transaction uses the books datasource"
+        count == 1
+    }
+
+    void "ALL mapped entity uses default datasource for withNewSession"() {
+        when: "requesting a new session for ALL mapped entity"
+        def url = Author.withNewSession { Session s ->
+            s.connection().metaData.getURL()
+        }
+
+        then: "default datasource is used"
+        url == "jdbc:h2:mem:grailsDB"
+    }
+
+    void "test @Transactional with connection property to non-default database"() {
+        when:
+        TestService testService = datastore.getDatastoreForConnection("books").getService(TestService)
         then:
-        noExceptionThrown()
+        testService != null
+    }
+
+    void "late registered entity is enhanced without child datastore listener failure"() {
+        when: "an entity is added after child datastores have been initialized"
+        datastore.mappingContext.addPersistentEntity(LateRegisteredBook)
+
+        then: "the parent enhancer registers public GORM APIs for the mapped datasource"
+        LateRegisteredBook.withNewSession { Session s ->
+            assert s.connection().metaData.getURL() == "jdbc:h2:mem:books"
+            true
+        }
     }
 }
 
@@ -157,8 +262,22 @@ class Author {
 @Transactional(connection = "books")
 class TestService {
 
-    def doSomething() {}
+    Author saveAuthor(String name) {
+        new Author(name: name).save(flush: true)
+    }
+
+    Number countAuthors(String name) {
+        Author.countByName(name)
+    }
 }
 
+@Entity
+class LateRegisteredBook {
+    Long id
+    Long version
+    String name
 
-
+    static mapping = {
+        datasource 'books'
+    }
+}

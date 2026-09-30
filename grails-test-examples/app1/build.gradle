@@ -19,7 +19,9 @@
 
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = '0.1'
@@ -38,11 +40,10 @@ dependencies {
 
     implementation 'org.apache.grails:grails-dependencies-starter-web'
     implementation 'com.h2database:h2'
-    if(System.getenv('SITEMESH3_TESTING_ENABLED') == 'true') {
-        implementation 'org.apache.grails:grails-sitemesh3'
-    }
-    else {
+    if (System.getenv('SITEMESH2_TESTING_ENABLED') == 'true') {
         implementation 'org.apache.grails:grails-layout'
+    } else {
+        implementation 'org.apache.grails:grails-sitemesh3'
     }
 
     implementation 'org.apache.grails:grails-data-hibernate5'
@@ -60,15 +61,13 @@ dependencies {
     testImplementation 'org.apache.grails:grails-testing-support-web'
     testImplementation 'org.apache.grails:grails-testing-support-datamapping'
 
-    console 'org.apache.grails:grails-console'
-    testImplementation "io.micronaut:micronaut-http-client:$micronautHttpClientVersion"
-    testImplementation "io.micronaut.serde:micronaut-serde-jackson:$micronautSerdeJacksonVersion"
 
     implementation project(':grails-test-examples-plugins-loadfirst')
     implementation project(':grails-test-examples-plugins-loadsecond')
     implementation project(':grails-test-examples-plugins-loadafter')
 
     integrationTestImplementation testFixtures('org.apache.grails:grails-geb')
+    integrationTestImplementation 'org.apache.grails:grails-testing-support-http-client'
 }
 
 tasks.withType(JavaExec).configureEach {

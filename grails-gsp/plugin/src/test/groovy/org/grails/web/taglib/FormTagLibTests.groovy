@@ -52,12 +52,40 @@ class FormTagLibTests extends Specification implements TagLibUnitTest<FormTagLib
     def setup() {
         tagLib.requestDataValueProcessor = new MockRequestDataValueProcessor()
 
+        // Clear any existing URL mappings artefacts to prevent test environment pollution
+        clearUrlMappingsArtefacts()
         grailsApplication.addArtefact(UrlMappingsArtefactHandler.TYPE, FormTagLibUrlMappings)
 
         defineBeans {
             grailsUrlMappingsHolder(UrlMappingsHolderFactoryBean) {
                 delegate.grailsApplication = grailsApplication
             }
+        }
+
+        // Update the linkGenerator's urlMappingsHolder reference to point to the new holder bean.
+        // This is necessary because linkGenerator was @Autowired with the previous holder instance
+        // and won't automatically update when we redefine the grailsUrlMappingsHolder bean.
+        refreshLinkGeneratorUrlMappingsHolder()
+    }
+
+    private void refreshLinkGeneratorUrlMappingsHolder() {
+        if (applicationContext.containsBean('grailsLinkGenerator') && applicationContext.containsBean('grailsUrlMappingsHolder')) {
+            def linkGenerator = applicationContext.getBean('grailsLinkGenerator')
+            if (linkGenerator.hasProperty('urlMappingsHolder')) {
+                linkGenerator.urlMappingsHolder = applicationContext.getBean('grailsUrlMappingsHolder')
+            }
+        }
+    }
+
+    def cleanup() {
+        // Clear URL mappings artefacts added by this test to prevent pollution of other tests
+        clearUrlMappingsArtefacts()
+    }
+
+    private void clearUrlMappingsArtefacts() {
+        // Access the protected artefactInfo map and remove URL mappings to prevent test environment pollution
+        if (grailsApplication instanceof grails.core.DefaultGrailsApplication) {
+            grailsApplication.@artefactInfo.remove(UrlMappingsArtefactHandler.TYPE)
         }
     }
 
@@ -74,6 +102,21 @@ class FormTagLibTests extends Specification implements TagLibUnitTest<FormTagLib
         expect:
         applyTemplate('<g:form url="/foo/bar" method="delete"></g:form>') ==
                 '<form action="/foo/bar" method="post" ><input type="hidden" name="_method" value="DELETE" id="_method" /></form>'
+    }
+
+    // A form aimed at a URL of the application's own choosing is not a resource form, so nothing generates
+    // a POST route that would reach it. The parameter is the only thing a mapping declared for PUT or
+    // PATCH can match on, and dropping it would leave such a mapping unreachable from a form.
+    def testFormTagWithAlternativeMethodOnAnApplicationUrl() {
+        given:
+        unRegisterRequestDataValueProcessor()
+
+        expect:
+        applyTemplate("<g:form url=\"/admin/update\" method=\"${method}\"></g:form>") ==
+                "<form action=\"/admin/update\" method=\"post\" ><input type=\"hidden\" name=\"_method\" value=\"${method.toUpperCase()}\" id=\"_method\" /></form>"
+
+        where:
+        method << ['put', 'patch', 'delete']
     }
 
     def testFormTagWithAlternativeMethodAndRequestDataValueProcessor() {
@@ -354,75 +397,6 @@ class FormTagLibTests extends Specification implements TagLibUnitTest<FormTagLib
                 value: 'My Button'
         ])).toString() ==
                 '<input type="submit" formaction="/con/action?requestDataValueProcessorParamName=paramValue" id="formElementId" value="My Button" />'
-    }
-
-    def testActionSubmitWithoutAction() {
-        given:
-        unRegisterRequestDataValueProcessor()
-
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                value: 'Edit'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Edit" />'
-    }
-
-    def testActionSubmitWithoutActionAndWithRequestDataValueProcessor() {
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                value: 'Edit'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Edit_PROCESSED_" />'
-    }
-
-    def testActionSubmitWithAction() {
-        given:
-        unRegisterRequestDataValueProcessor()
-
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                action: 'Edit',
-                value: 'Some label for editing'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Some label for editing" />'
-    }
-
-    def testActionSubmitWithActionAndRequestDataValueProcessor() {
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                action:'Edit',
-                value:'Some label for editing'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Some label for editing_PROCESSED_" />'
-    }
-
-    /**
-     * GRAILS-454 - Make sure that the 'name' attribute is ignored.
-     */
-    def testActionSubmitWithName() {
-        given:
-        unRegisterRequestDataValueProcessor()
-
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                action: 'Edit',
-                value: 'Some label for editing',
-                name:'customName'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Some label for editing" />'
-    }
-
-    def testActionSubmitWithAdditionalAttributes() {
-        given:
-        unRegisterRequestDataValueProcessor()
-
-        expect:
-        tagLib.actionSubmit(new TreeMap([
-                action: 'Edit',
-                value: 'Some label for editing',
-                style: 'width: 200px;'
-        ])).toString() ==
-                '<input type="submit" name="_action_Edit" value="Some label for editing" style="width: 200px;" />'
     }
 
     def testActionSubmitImageWithoutAction() {

@@ -16,7 +16,7 @@ limitations under the License.
 
 # Grails Geb Plugin
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.grails.plugins/geb.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/org.grails.plugins/geb)
+[![Maven Central](https://img.shields.io/maven-central/v/org.apache.grails/grails-geb.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/org.apache.grails/grails-geb)
 
 ## Geb Functional Testing for the Grails® framework
 
@@ -67,6 +67,24 @@ This requires a [compatible container runtime](https://java.testcontainers.org/s
 
 If you choose to use the `ContainerGebSpec` class, as long as you have a compatible container runtime installed, you don't need to do anything else.
 Just run `./gradlew integrationTest` and a container will be started and configured to start a browser that can access your application under test.
+
+#### Context Path Support
+
+If your application configures a servlet context path (e.g., `server.servlet.context-path: /myapp`), `ContainerGebSpec` automatically includes it in the browser's base URL. No changes are needed in your test code — page URLs remain relative to the context root:
+
+```yaml
+# application.yml
+server:
+  servlet:
+    context-path: /myapp
+```
+
+```groovy
+class GreetingPage extends Page {
+    static url = '/greeting'  // relative — resolves to /myapp/greeting
+    static at = { title == 'Greeting' }
+}
+```
 
 #### Parallel Execution
 
@@ -145,7 +163,7 @@ The following system properties exist to configure timeouts:
   * purpose: how often to retry waiting operations
   * type: Number
   * defaults to `0.1` seconds
-* `grails.geb.timeouts.waiting`
+* `grails.geb.timeouts.timeout`
   * purpose: amount of time to wait for waiting operations
   * type: Number
   * defaults to `5.0` seconds

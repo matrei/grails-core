@@ -16,10 +16,11 @@
 # for testing in a container that is similar to the grails github action linux build environment
 # run this from the root of the project
 # `docker build -t grails:testing -f etc/bin/Dockerfile . && docker run -it --rm -v $(pwd):/home/groovy/project grails:testing bash`
-FROM bellsoft/liberica-openjdk-debian:17.0.17
+# Keep java version synced with .sdkmanrc and .github/workflows/release.yml ($JAVA_VERSION)
+FROM bellsoft/liberica-openjdk-debian:21.0.12
 
 USER root
-RUN apt-get update && apt-get install -y curl unzip coreutils libdigest-sha-perl gpg vim sudo psmisc locales groovy rsync nano
+RUN apt-get update && apt-get install -y ca-certificates curl unzip coreutils libdigest-sha-perl gpg vim sudo psmisc locales groovy rsync nano
 
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     dpkg-reconfigure --frontend=noninteractive locales && \
@@ -37,6 +38,15 @@ ADD --chown=groovy gradlew /home/groovy/scripts
 ADD --chown=groovy KEYS /home/groovy/scripts
 ADD --chown=groovy gradle/wrapper/gradle-wrapper.jar /home/groovy/scripts/gradle/wrapper
 ADD --chown=groovy gradle/wrapper/gradle-wrapper.properties /home/groovy/scripts/gradle/wrapper
+
+# Defensive line-ending normalization. The repository's .gitattributes pins
+# shell scripts, gradlew, KEYS, and the Dockerfile to LF on every platform, but
+# committers with a pre-existing local checkout under core.autocrlf=true may
+# still feed CRLF into the build context. Linux refuses scripts with bash\r
+# shebangs and verify-keys.sh would fail the byte-for-byte SVN comparison.
+# Strip CRs from any text file that must be LF on Linux.
+RUN find /home/groovy/scripts -type f \( -name '*.sh' -o -name 'gradlew' -o -name 'KEYS' -o -name '*.properties' \) -exec sed -i 's/\r$//' {} \;
+
 ENV PATH="/home/groovy/scripts:/home/groovy/scripts/etc/bin:$PATH"
 ENV CI=true
 ENV LANG=C.UTF-8

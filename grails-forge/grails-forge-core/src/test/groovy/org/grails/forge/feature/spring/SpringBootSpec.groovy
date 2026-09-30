@@ -19,13 +19,15 @@
 
 package org.grails.forge.feature.spring
 
+import spock.lang.Unroll
+
 import org.grails.forge.BeanContextSpec
+import org.grails.forge.BuildBuilder
 import org.grails.forge.application.ApplicationType
 import org.grails.forge.fixture.CommandOutputFixture
-import org.grails.forge.options.JdkVersion
+import org.grails.forge.options.DevelopmentReloading
 import org.grails.forge.options.Options
-import org.grails.forge.options.TestFramework
-import spock.lang.Unroll
+import org.grails.forge.options.ServletImpl
 
 class SpringBootSpec extends BeanContextSpec implements CommandOutputFixture {
 
@@ -34,7 +36,7 @@ class SpringBootSpec extends BeanContextSpec implements CommandOutputFixture {
         when:
         def output = generate(
                 applicationType,
-                new Options(TestFramework.SPOCK)
+                new Options(DevelopmentReloading.DEVTOOLS)
         )
         final String build = output['build.gradle']
 
@@ -53,7 +55,7 @@ class SpringBootSpec extends BeanContextSpec implements CommandOutputFixture {
         when:
         def output = generate(
                 ApplicationType.PLUGIN,
-                new Options(TestFramework.SPOCK)
+                new Options(DevelopmentReloading.DEVTOOLS)
         )
         final String build = output['build.gradle']
 
@@ -64,5 +66,21 @@ class SpringBootSpec extends BeanContextSpec implements CommandOutputFixture {
         build.contains("implementation \"org.springframework.boot:spring-boot-starter-validation\"")
         build.contains("implementation \"org.springframework.boot:spring-boot-autoconfigure\"")
         !build.contains("implementation \"org.springframework.boot:spring-boot-starter-tomcat\"")
+    }
+
+    void "test undertow servlet applies the grails-undertow plugin"() {
+        when:
+        // Spring Boot 4 no longer ships spring-boot-starter-undertow; Undertow
+        // support comes from the Grails Undertow plugin, which bundles the vendored
+        // Spring Boot Undertow autoconfiguration (grails-undertow-spring-boot).
+        final String build = new BuildBuilder(beanContext)
+                .servletImpl(ServletImpl.UNDERTOW)
+                .render()
+
+        then:
+        build.contains("implementation \"org.apache.grails:grails-undertow\"")
+        !build.contains("org.springframework.boot:spring-boot-starter-undertow")
+        !build.contains("implementation \"org.springframework.boot:spring-boot-starter-tomcat\"")
+        !build.contains("implementation \"org.springframework.boot:spring-boot-starter-jetty\"")
     }
 }

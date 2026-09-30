@@ -22,26 +22,15 @@ apply plugin: 'groovy'
 // grails-data-mapping api
 def combinedGroovydoc = tasks.register('aggregateDataMappingGroovydoc', Groovydoc)
 apply from: rootProject.layout.projectDirectory.file('gradle/docs-dependencies.gradle')
+// aggregateDataMappingGroovydoc documents the whole data-mapping stack in one run, so it
+// needs more than a single module does.
+groovydocEnhancer {
+    maxHeapSize = '2g'
+}
+
 combinedGroovydoc.configure { Groovydoc task ->
     task.windowTitle = "Grails Data Mapping API - ${projectVersion}"
     task.docTitle = "Grails Data Mapping API - ${projectVersion}"
-    task.footer = '''<!-- Matomo -->
-<script>
-    var _paq = window._paq = window._paq || [];
-    /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
-    _paq.push(["setDoNotTrack", true]);
-    _paq.push(["disableCookies"]);
-    _paq.push(['trackPageView']);
-    _paq.push(['enableLinkTracking']);
-    (function() {
-        var u="https://analytics.apache.org/";
-        _paq.push(['setTrackerUrl', u+'matomo.php']);
-        _paq.push(['setSiteId', '79']);
-        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-        g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-    })();
-</script>
-<!-- End Matomo Code -->'''
 
     Set<Project> docProjects = rootProject.subprojects.findAll {
         it.name in [
@@ -77,14 +66,19 @@ combinedGroovydoc.configure { Groovydoc task ->
             }
             .flatten()
 
-    task.source(sources.collect{ SourceSet it -> [it.allSource.srcDirs, it.allSource.srcDirs] }.flatten().findAll { File srcDir ->
-        if(!(srcDir.name in ['java', 'groovy'])) {
+    def allSourceDirs = sources.collect { SourceSet it -> [it.allSource.srcDirs, it.allSource.srcDirs] }.flatten().findAll { File srcDir ->
+        if (!(srcDir.name in ['java', 'groovy'])) {
             return false
         }
 
         srcDir.exists()
-    }.unique())
-    task.classpath = files(sources.collect{ SourceSet it -> it.compileClasspath.filter(File.&isDirectory) }.flatten().unique())
+    }.unique()
+    task.source(allSourceDirs)
+    task.ext.groovydocSourceDirs = allSourceDirs
+    // The full compile classpath, not just the sibling projects' class directories: Groovydoc
+    // needs to load the external types referenced by the sources, otherwise it links them to
+    // a page it never generated instead of to the external javadocs configured above.
+    task.classpath = files(sources.collect { SourceSet it -> it.compileClasspath })
     task.destinationDir = project.layout.buildDirectory.dir('data-api/api').get().asFile
 
     task.inputs.files(task.source).withPropertyName("groovyDocSrc").withPathSensitivity(PathSensitivity.RELATIVE)
@@ -117,19 +111,33 @@ tasks.register('copyHibernate5Docs', Sync).configure { Sync it ->
     it.outputs.dir(targetDir)
 }
 
+tasks.register('copyHibernate7Docs', Sync).configure { Sync it ->
+    it.dependsOn(':grails-data-hibernate7-docs:docs')
+
+    def hibernate7SourceDir = project(':grails-data-hibernate7-docs').layout.buildDirectory.dir('docs')
+    def targetDir = project.layout.buildDirectory.dir('hibernate7-api/grails-data/hibernate7')
+
+    it.from(hibernate7SourceDir)
+    it.into(targetDir)
+
+    it.inputs.dir(hibernate7SourceDir)
+    it.outputs.dir(targetDir)
+}
+
 tasks.register('docs', Sync).configure { Sync it ->
     it.group = 'documentation'
-    it.dependsOn('aggregateDataMappingGroovydoc', 'copyGuides', 'copyMongodbDocs', 'copyHibernate5Docs')
+    it.dependsOn('aggregateDataMappingGroovydoc', 'copyGuides', 'copyMongodbDocs', 'copyHibernate5Docs', 'copyHibernate7Docs')
 
     def websiteDir = rootProject.layout.projectDirectory.dir('grails-data-docs/data-mapping-website/src/main/resources')
     def guidesDir = project.layout.buildDirectory.dir('guides/grails-data')
     def mongoApiDir = project.layout.buildDirectory.dir('mongodb-api/grails-data')
     def hibernate5ApiDir = project.layout.buildDirectory.dir('hibernate5-api/grails-data')
+    def hibernate7ApiDir = project.layout.buildDirectory.dir('hibernate7-api/grails-data')
     def dataCoreApiDir = project.layout.buildDirectory.dir('data-api')
 
     def combinedDir = project.layout.buildDirectory.dir('docs/grails-data')
 
-    it.from websiteDir, guidesDir, mongoApiDir, hibernate5ApiDir, dataCoreApiDir
+    it.from websiteDir, guidesDir, mongoApiDir, hibernate5ApiDir, hibernate7ApiDir, dataCoreApiDir
     it.into combinedDir
 }
 

@@ -17,25 +17,17 @@
  *  under the License.
  */
 
-configurations.register('documentation') {
-    canBeConsumed = false
-    canBeResolved = true
-    attributes {
-        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
-        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
-        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
-    }
-}
+apply plugin: 'org.apache.grails.buildsrc.groovydoc'
+
 dependencies {
     add('documentation', platform(project(':grails-gradle-bom')))
-    add('documentation', 'org.fusesource.jansi:jansi')
-    add('documentation', 'jline:jline')
     add('documentation', 'com.github.javaparser:javaparser-core')
-    add('documentation', "org.apache.groovy:groovy:${bomDependencyVersions['groovy.version']}")
-    add('documentation', "org.apache.groovy:groovy-groovydoc:${bomDependencyVersions['groovy.version']}")
-    add('documentation', "org.apache.groovy:groovy-ant:${bomDependencyVersions['groovy.version']}")
-    add('documentation', "org.apache.groovy:groovy-docgenerator:${bomDependencyVersions['groovy.version']}")
-    add('documentation', "org.apache.groovy:groovy-templates:${bomDependencyVersions['groovy.version']}")
+    // Use Gradle's embedded Groovy (gradle-groovy.version), not the project's main Groovy version.
+    add('documentation', "org.apache.groovy:groovy:${gradleBomDependencyVersions['gradle-groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-groovydoc:${gradleBomDependencyVersions['gradle-groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-ant:${gradleBomDependencyVersions['gradle-groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-docgenerator:${gradleBomDependencyVersions['gradle-groovy.version']}")
+    add('documentation', "org.apache.groovy:groovy-templates:${gradleBomDependencyVersions['gradle-groovy.version']}")
 }
 
 ext {
@@ -45,30 +37,6 @@ ext {
 TaskProvider<Groovydoc> groovydocTask = tasks.named('groovydoc', Groovydoc)
 groovydocTask.configure { Groovydoc it ->
     it.classpath = configurations.documentation
-    it.groovyClasspath = configurations.documentation
-    it.access = GroovydocAccess.PROTECTED
-    it.includeAuthor = false
-    it.includeMainForScripts = false
-    it.processScripts = false
-    it.noTimestamp = true
-    it.noVersionStamp = false
-    it.footer = '''<!-- Matomo -->
-<script>
-    var _paq = window._paq = window._paq || [];
-    /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
-    _paq.push(["setDoNotTrack", true]);
-    _paq.push(["disableCookies"]);
-    _paq.push(['trackPageView']);
-    _paq.push(['enableLinkTracking']);
-    (function() {
-        var u="https://analytics.apache.org/";
-        _paq.push(['setTrackerUrl', u+'matomo.php']);
-        _paq.push(['setSiteId', '79']);
-        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-        g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-    })();
-</script>
-<!-- End Matomo Code -->'''
     it.destinationDir = project.file('build/docs/api')
 }
 

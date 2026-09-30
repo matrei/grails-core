@@ -19,8 +19,10 @@
 
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.gradle.grails-web'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = projectVersion
@@ -40,10 +42,13 @@ dependencies {
     implementation 'org.apache.grails:grails-core'
     implementation 'org.apache.grails:grails-domain-class'
 
+    compileOnly 'org.slf4j:slf4j-nop' // Prevents warning about missing slf4j implementation during compilation
+
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.zaxxer:HikariCP'
     runtimeOnly 'org.apache.grails:grails-databinding'
     runtimeOnly 'org.apache.grails:grails-controllers'
+    runtimeOnly 'org.apache.grails:grails-url-mappings'
     runtimeOnly 'org.springframework.boot:spring-boot-autoconfigure'
     runtimeOnly 'org.springframework.boot:spring-boot-starter-logging'
     runtimeOnly 'org.springframework.boot:spring-boot-starter-tomcat'
@@ -51,6 +56,9 @@ dependencies {
     testImplementation 'org.apache.grails.testing:grails-testing-support-core'
 
     testRuntimeOnly 'org.apache.grails:grails-testing-support-web'
+
+    integrationTestImplementation 'org.apache.grails:grails-testing-support-http-client'
+    integrationTestImplementation 'org.spockframework:spock-core'
 }
 
 sourceSets {

@@ -24,6 +24,8 @@ import org.grails.forge.application.generator.GeneratorContext;
 import org.grails.forge.build.dependencies.Dependency;
 import org.grails.forge.feature.DefaultFeature;
 import org.grails.forge.feature.Feature;
+import org.grails.forge.feature.database.GrailsDataHibernate7;
+import org.grails.forge.feature.micronaut.GrailsMicronaut;
 import org.grails.forge.options.Options;
 import org.grails.forge.template.URLTemplate;
 
@@ -55,17 +57,30 @@ public class GrailsBase implements DefaultFeature {
     @Override
     public void apply(GeneratorContext generatorContext) {
 
-        // This ensures that grails-bom forces milestones to override snapshots
+        // When Micronaut is used, the application must consume the Micronaut BOM variant as an
+        // enforcedPlatform so the Micronaut platform cannot override the Grails BOM. The
+        // Hibernate 7 BOM variants pin the Hibernate 7 dependency versions (e.g. jandex) that
+        // conflict with the default (Hibernate 5) grails-bom - see grails-core issue #15942.
+        boolean useMicronautBom = generatorContext.isFeaturePresent(GrailsMicronaut.class);
+        boolean useHibernate7Bom = generatorContext.isFeaturePresent(GrailsDataHibernate7.class);
+        String bomArtifactId;
+        if (useMicronautBom) {
+            bomArtifactId = useHibernate7Bom ? "grails-hibernate7-micronaut-bom" : "grails-micronaut-bom";
+        } else {
+            bomArtifactId = useHibernate7Bom ? "grails-hibernate7-bom" : "grails-bom";
+        }
+
         generatorContext.addDependency(Dependency.builder()
                 .groupId("org.apache.grails")
-                .artifactId("grails-bom")
+                .artifactId(bomArtifactId)
                 .pom(true)
+                .enforced(useMicronautBom)
                 .version("$grailsVersion")
                 .implementation());
 
         generatorContext.addBuildscriptDependency(Dependency.builder()
                 .groupId("org.apache.grails")
-                .artifactId("grails-bom")
+                .artifactId(bomArtifactId)
                 .pom(true)
                 .version("$grailsVersion")
                 .classpath());

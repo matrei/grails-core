@@ -39,6 +39,7 @@ All types of contributions are encouraged and valued. See the [Table of Contents
   - [Reporting Bugs](#reporting-bugs)
 - [Suggesting Enhancements](#suggesting-enhancements)
 - [Your First Code Contribution](#your-first-code-contribution)
+- [Contributions Using Generative AI Tooling](#contributions-using-generative-ai-tooling)
 - [Improving The Documentation](#improving-the-documentation)
 - [Code Style](#code-style)
 - [Commit Messages](#commit-messages)
@@ -166,9 +167,11 @@ To build the code, without tests, simply run:
 
     ./gradlew build -PskipTests
 
-If you encounter out of memory errors when trying to run the build, try adjusting Gradle build settings. For example:
+If you encounter out of memory errors when trying to run the build, raise the daemon heap.
+`org.gradle.jvmargs` in `gradle.properties` is what sizes it, so a bare `-Xmx` in `GRADLE_OPTS`
+is ignored - override the property itself:
 
-    export GRADLE_OPTS="-Xms2G -Xmx5G"
+    export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4G"
 
 Please note that a valid container runtime is required to run Grails Tests. The example above omits the tests so the
 build will pass.
@@ -190,6 +193,29 @@ Sometimes it's useful to debug your local application to see what's going wrong.
     ./gradlew bootRun --debug-jvm
 
 By default, Grails forks a JVM to run the application. The `-debug-jvm` argument causes the debugger to be associated with the forked JVM.  You can then attach your debugger as proceed as normal.
+
+## Contributions Using Generative AI Tooling
+
+Contributions prepared with the help of generative AI tools are permitted, but the same quality, completeness, and attribution standards apply as for any other contribution. The submitter is fully responsible for the content of the pull request regardless of whether AI tooling was used.
+
+Before submitting an AI-assisted contribution:
+
+- **Comply with the [Apache Software Foundation's policy on generative tooling](https://www.apache.org/legal/generative-tooling.html).** Ensure that generated content is free of licensing or attribution issues and that you have the right to contribute it under the Apache License 2.0.
+- **Attribute AI usage.** Indicate in the pull request description if generative AI tooling was used and how, so reviewers have the context they need.
+- **Use a capable model.** Generated contributions must meet the project's quality bar. Low-effort output from weaker models that requires reviewers to finish the work is not acceptable.
+- **Read, understand, and verify the output.** Do not submit code, tests, or documentation that you have not reviewed yourself. You are accountable for every line.
+
+Pull requests prepared with AI tooling must also meet the following expectations — these are the most common reasons AI-assisted contributions are rejected:
+
+- **Linked to an approved issue.** The PR must reference an existing issue that has been acknowledged or approved by the project team. Speculative or unsolicited AI-generated work without an approved issue will be closed.
+- **Complete scope.** The PR must fully address the linked issue. Partial implementations, scaffolding without working behavior, or "starter" PRs expecting maintainers to finish the work will be closed.
+- **Focused change.** Submit a single, focused change per PR. Do not include unrelated refactors, mass reformatting, or style-only churn generated as a side effect of the AI's output.
+- **Tests included.** Behavior introduced or modified must be covered by new or updated tests that exercise the change through public APIs. See [Testing Your Change](#testing-your-change).
+- **Documentation included.** User-facing changes must include matching updates to the Grails Guide, including the *What's New* and *Upgrade Notes* sections where applicable. See [Improving The Documentation](#improving-the-documentation).
+- **Code style compliance.** Run `./gradlew codeStyle` locally and resolve violations before opening the PR.
+- **Targets the correct branch.** Respect the branch policy (patch branches accept bug fixes only; minor branches accept features without breaking APIs; major branches accept breaking changes). See the [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) for details.
+
+Pull requests that appear to be auto-generated, incomplete, unrelated to an approved issue, or otherwise inconsistent with the project's standards may be closed without review so maintainers can focus on reviewed and planned work. See the [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) for the full contributor checklist.
 
 ### Improving The Documentation
 

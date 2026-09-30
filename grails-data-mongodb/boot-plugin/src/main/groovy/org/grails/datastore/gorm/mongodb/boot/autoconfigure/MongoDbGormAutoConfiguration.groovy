@@ -16,6 +16,7 @@
 package org.grails.datastore.gorm.mongodb.boot.autoconfigure
 
 import java.beans.Introspector
+import java.util.function.Supplier
 
 import groovy.transform.CompileStatic
 
@@ -29,8 +30,8 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages
 import org.springframework.boot.autoconfigure.AutoConfigureAfter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
-import org.springframework.boot.autoconfigure.mongo.MongoProperties
+import org.springframework.boot.mongodb.autoconfigure.MongoAutoConfiguration
+import org.springframework.boot.mongodb.autoconfigure.MongoProperties
 import org.springframework.context.ApplicationContext
 import org.springframework.context.ApplicationContextAware
 import org.springframework.context.ConfigurableApplicationContext
@@ -90,8 +91,10 @@ class MongoDbGormAutoConfiguration implements ApplicationContextAware {
             datastore = new MongoDatastore(mongo, environment, eventPublisher, packages as Package[])
         }
         else if (mongoProperties != null) {
-            this.mongo = MongoClients.create(mongoOptions)
-            datastore = new MongoDatastore(mongo, environment, eventPublisher, packages as Package[])
+            // Built from Spring Boot's settings rather than from grails.mongodb, so GORM is given what builds one:
+            // it owns the client, closes it for a checkpoint and builds the replacement the restore needs.
+            datastore = new MongoDatastore({ MongoClients.create(mongoOptions) } as Supplier<MongoClient>,
+                    environment, eventPublisher, packages as Package[])
         }
         else {
             datastore = new MongoDatastore(environment, eventPublisher, packages as Package[])

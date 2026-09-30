@@ -27,15 +27,16 @@ import org.codehaus.groovy.control.CompilationFailedException
 import org.codehaus.groovy.control.CompilationUnit
 import org.codehaus.groovy.control.CompilerConfiguration
 
-import org.springframework.boot.ResourceBanner
 import org.springframework.boot.SpringApplication
-import org.springframework.boot.web.context.WebServerApplicationContext
+import org.springframework.boot.context.ApplicationPidFileWriter
+import org.springframework.boot.web.server.context.WebServerApplicationContext
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.core.env.ConfigurableEnvironment
-import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.ResourceLoader
 
+import grails.boot.config.GrailsEarlyPluginRegistrationPostProcessor
 import grails.compiler.ast.ClassInjector
+import grails.config.Settings
 import grails.core.GrailsApplication
 import grails.io.IOUtils
 import grails.plugins.GrailsPlugin
@@ -61,8 +62,16 @@ import org.grails.plugins.support.WatchPattern
 @CompileStatic
 class GrailsApp extends SpringApplication {
 
-    private static final String GRAILS_BANNER = 'grails-banner.txt'
     private static final String SPRING_PROFILES = 'spring.profiles.active'
+
+    /**
+     * System property holding the path of the PID file the application should write on startup.
+     * It is set by {@code GrailsGradlePlugin} on the {@code bootRun} task as
+     * {@code grails.cli.pid.file}. When present, the PID file lets the CLI {@code stop-app} command
+     * terminate this process. It is never set for a normally deployed application, so production
+     * runs are unaffected.
+     */
+    private static final String CLI_PID_FILE_PROPERTY = 'grails.cli.pid.file'
 
     private static boolean developmentModeActive = false
     private static DirectoryWatcher directoryWatcher
@@ -95,11 +104,12 @@ class GrailsApp extends SpringApplication {
      */
     GrailsApp(ResourceLoader resourceLoader, Class<?>... sources) {
         super(resourceLoader, sources)
-        banner = new ResourceBanner(new ClassPathResource(GRAILS_BANNER))
+        banner = new GrailsBanner()
     }
 
     @Override
     ConfigurableApplicationContext run(String... args) {
+        configureCliPidFileWriter()
         ConfigurableApplicationContext applicationContext = super.run(args)
         Environment environment = Environment.getCurrent()
 
@@ -117,10 +127,60 @@ class GrailsApp extends SpringApplication {
         return applicationContext
     }
 
+    /**
+     * Registers a Spring Boot {@link ApplicationPidFileWriter} when the CLI has supplied a PID file
+     * path through the {@code grails.cli.pid.file} system property, so the forked development
+     * application writes its own process id to the location the {@code stop-app} command reads.
+     *
+     * <p>The writer is registered before {@code super.run()} so it receives the early
+     * {@code ApplicationPreparedEvent} that triggers the write. The property is only present on the
+     * CLI/Gradle {@code run-app} path, so a normally deployed application is unaffected.</p>
+     */
+    protected void configureCliPidFileWriter() {
+        String pidFilePath = System.getProperty(CLI_PID_FILE_PROPERTY)
+        if (pidFilePath) {
+            addListeners(new ApplicationPidFileWriter(pidFilePath))
+        }
+    }
+
+    /**
+     * Stashes the application source classes as a well-known singleton so that
+     * {@code GrailsEarlyPluginRegistrationPostProcessor} can perform artefact discovery before
+     * Spring Boot auto-configuration is processed. Runs before the context initializers are
+     * applied, so the singleton is available by the time the early registration phase executes.
+     */
+    @Override
+    protected void postProcessApplicationContext(ConfigurableApplicationContext applicationContext) {
+        super.postProcessApplicationContext(applicationContext)
+        ClassLoader loader = getClassLoader() ?: Thread.currentThread().contextClassLoader
+        List<Class<?>> sourceClasses = []
+        for (Object source in getAllSources()) {
+            if (source instanceof Class) {
+                sourceClasses.add((Class<?>) source)
+            }
+            else if (source instanceof String) {
+                try {
+                    // sources may be supplied as class names (spring.main.sources); resolve them so a
+                    // String-specified application class is still available for early artefact discovery
+                    sourceClasses.add(Class.forName((String) source, false, loader))
+                }
+                catch (ClassNotFoundException | LinkageError ignored) {
+                    // a String source that is not a resolvable class (e.g. a resource location) is not
+                    // an application class, so there is nothing to stash for it
+                }
+            }
+        }
+        if (!sourceClasses.isEmpty()) {
+            applicationContext.beanFactory.registerSingleton(
+                    GrailsEarlyPluginRegistrationPostProcessor.APPLICATION_SOURCE_CLASSES_BEAN_NAME,
+                    sourceClasses.toArray(new Class<?>[0]))
+        }
+    }
+
     @Override
     protected ConfigurableApplicationContext createApplicationContext() {
-        setAllowBeanDefinitionOverriding(true)
-        setAllowCircularReferences(true)
+        setAllowBeanDefinitionOverriding(configuredEnvironment.getProperty(Settings.SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING, Boolean, Boolean.TRUE))
+        setAllowCircularReferences(configuredEnvironment.getProperty(Settings.SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES, Boolean, Boolean.TRUE))
         ConfigurableApplicationContext applicationContext = super.createApplicationContext()
 
         if (enableBeanCreationProfiler) {
@@ -133,7 +193,14 @@ class GrailsApp extends SpringApplication {
 
     @Override
     protected void configureEnvironment(ConfigurableEnvironment environment, String[] args) {
-        configurePropertySources(environment, args)
+        // Delegating to super installs the ApplicationConversionService so relaxed property
+        // resolution (e.g. lowercase enum values) works via environment.getProperty(). The same
+        // conversion service is propagated into PropertySourcesConfig, so typed access through
+        // grailsApplication.config.getProperty(name, type) is equally lenient.
+        // NOTE: GrailsApplicationPostProcessor mutates this service via addConverter(), which
+        // relies on Boot installing a new mutable instance here rather than the unmodifiable
+        // ApplicationConversionService.getSharedInstance() - verify on Spring Boot upgrades.
+        super.configureEnvironment(environment, args)
 
         String[] springProfile = environment.getProperty(SPRING_PROFILES, String[])
         if (springProfile) {

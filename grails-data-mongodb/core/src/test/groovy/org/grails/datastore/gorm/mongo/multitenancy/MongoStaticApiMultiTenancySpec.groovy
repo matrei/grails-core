@@ -29,18 +29,22 @@ import org.grails.datastore.mapping.mongo.config.MongoSettings
 import org.grails.datastore.mapping.multitenancy.exceptions.TenantNotFoundException
 import org.grails.datastore.mapping.multitenancy.resolvers.SystemPropertyTenantResolver
 import spock.lang.AutoCleanup
+import spock.util.environment.RestoreSystemProperties
 import spock.lang.Shared
 
+@RestoreSystemProperties
 class MongoStaticApiMultiTenancySpec extends AutoStartedMongoSpec {
 
-    @Shared  @AutoCleanup MongoDatastore datastore
+    @AutoCleanup MongoDatastore datastore
 
     @Override
     boolean shouldInitializeDatastore() {
         false
     }
 
-    void setupSpec() {
+    void setup() {
+        // Ensure tenant property is cleared before each test for test isolation
+        System.clearProperty(SystemPropertyTenantResolver.PROPERTY_NAME)
         Map config = [
                 "grails.gorm.multiTenancy.mode"               : "DISCRIMINATOR",
                 "grails.gorm.multiTenancy.tenantResolverClass": SystemPropertyTenantResolver,
@@ -48,11 +52,6 @@ class MongoStaticApiMultiTenancySpec extends AutoStartedMongoSpec {
         ]
         this.datastore = new MongoDatastore(config, getDomainClasses() as Class[])
     }
-
-    void setup() {
-        System.setProperty(SystemPropertyTenantResolver.PROPERTY_NAME, "")
-    }
-
 
     void "test search"() {
         setup: "drop existing database"

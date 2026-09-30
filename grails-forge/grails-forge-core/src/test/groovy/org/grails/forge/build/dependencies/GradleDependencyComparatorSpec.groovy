@@ -21,6 +21,7 @@ package org.grails.forge.build.dependencies
 
 import org.grails.forge.application.generator.GeneratorContext
 import org.grails.forge.build.gradle.GradleDependency
+import org.grails.forge.options.DevelopmentReloading
 import org.grails.forge.options.TestFramework
 import spock.lang.Specification
 
@@ -29,7 +30,7 @@ class GradleDependencyComparatorSpec extends Specification {
     void "sort based on gradle configuration"() {
         given:
         def ctx = Stub(GeneratorContext) {
-            getTestFramework() >> TestFramework.JUNIT
+            getDevelopmentReloading() >> DevelopmentReloading.DEVTOOLS
         }
         List<GradleDependency> dependencies =
                 [dep(Dependency.builder().groupId("io.micronaut").artifactId("micronaut-validation").implementation(), ctx),
@@ -43,7 +44,7 @@ class GradleDependencyComparatorSpec extends Specification {
                  dep(Dependency.builder().groupId("org.testcontainers").artifactId("testcontainers").testImplementation(), ctx),
                  dep(Dependency.builder().groupId("com.mysql").artifactId("mysql-connector-j").runtimeOnly(), ctx),
                  dep(Dependency.builder().groupId("org.testcontainers").artifactId("junit-jupiter").testImplementation(), ctx),
-                 dep(Dependency.builder().groupId("org.testcontainers").artifactId("mysql").testImplementation(), ctx),
+                 dep(Dependency.builder().groupId("org.testcontainers").artifactId("testcontainers-mysql").testImplementation(), ctx),
                  dep(Dependency.builder().groupId("ch.qos.logback").artifactId("logback-classic").runtimeOnly(), ctx)]
 
         when:
@@ -61,8 +62,8 @@ class GradleDependencyComparatorSpec extends Specification {
         "${str(dependencies[8])}" == 'runtimeOnly "ch.qos.logback:logback-classic"'
         "${str(dependencies[9])}" == 'runtimeOnly "com.mysql:mysql-connector-j"'
         "${str(dependencies[10])}" == 'testImplementation "org.testcontainers:junit-jupiter"'
-        "${str(dependencies[11])}" == 'testImplementation "org.testcontainers:mysql"'
-        "${str(dependencies[12])}" == 'testImplementation "org.testcontainers:testcontainers"'
+        "${str(dependencies[11])}" == 'testImplementation "org.testcontainers:testcontainers"'
+        "${str(dependencies[12])}" == 'testImplementation "org.testcontainers:testcontainers-mysql"'
     }
 
     private static String str(GradleDependency dependency) {

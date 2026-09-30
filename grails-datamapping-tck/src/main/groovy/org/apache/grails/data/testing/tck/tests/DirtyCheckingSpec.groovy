@@ -31,10 +31,12 @@ import org.grails.datastore.mapping.proxy.ProxyHandler
 /**
  * @author Graeme Rocher
  */
+// This spec is ignored for Hibernate 7 because there is an isolated DirtyCheckingSpecHibernate7 test in the Hibernate 7 module.
+@IgnoreIf({ System.getProperty('hibernate7.gorm.suite') == 'true' })
 class DirtyCheckingSpec extends GrailsDataTckSpec {
 
     void setupSpec() {
-        manager.domainClasses.addAll([Person, TestBook, TestAuthor, Card, CardProfile])
+        manager.registerDomainClasses(Person, TestBook, TestAuthor, Card, CardProfile)
     }
 
     ProxyHandler proxyHandler

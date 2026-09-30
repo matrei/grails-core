@@ -22,10 +22,17 @@ plugins {
     id 'java-library'
     id 'project-report'
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
     id 'org.apache.grails.buildsrc.publish'
     id 'org.apache.grails.buildsrc.sbom'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
     id 'org.apache.grails.gradle.grails-code-style'
+    // the cli tier is consumed in the main variants (see the capability dependency below); the
+    // published pom and module metadata must record the companion coordinate (grails-core-cli)
+    // instead of the capability request, which external consumers cannot resolve
+    id 'org.apache.grails.gradle.grails-cli-library'
+    id 'org.apache.grails.gradle.grails-jacoco'
 }
 
 version = projectVersion
@@ -36,12 +43,17 @@ dependencies {
     implementation platform(project(':grails-bom'))
 
     api project(":grails-core")
+    // the command runner executes ApplicationCommands, which live in the cli companion artifact
+    api(project(':grails-core')) {
+        capabilities {
+            requireCapability('org.apache.grails:grails-core-cli')
+        }
+    }
     api 'org.apache.groovy:groovy'
     api 'org.apache.groovy:groovy-console'
     api 'org.apache.groovy:groovy-swing'
     api 'org.apache.groovy:groovy-groovysh'
-    implementation 'org.fusesource.jansi:jansi'
-    implementation 'jline:jline'
+    implementation 'org.jline:jline'
     implementation 'net.java.dev.jna:jna'
 
     api('org.springframework.boot:spring-boot')
@@ -51,9 +63,11 @@ dependencies {
 
     api 'jakarta.servlet:jakarta.servlet-api'
 
+    compileOnly 'org.slf4j:slf4j-nop' // Prevents warning about missing slf4j implementation during compilation
+
     testImplementation 'org.apache.groovy:groovy-test-junit5'
     testImplementation 'org.junit.jupiter:junit-jupiter-api'
-    testImplementation 'org.junit.platform:junit-platform-runner'
+    testImplementation 'org.junit.platform:junit-platform-suite'
 
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
 
@@ -63,12 +77,10 @@ dependencies {
 
     // Testing
     testImplementation 'org.slf4j:slf4j-simple'
-    testImplementation('org.spockframework:spock-core') { transitive = false }
-    // Required by Spock's Mocking
-    testRuntimeOnly 'net.bytebuddy:byte-buddy'
-    testImplementation 'org.objenesis:objenesis'
+    testImplementation 'org.spockframework:spock-core'
 }
 
 apply {
     from rootProject.layout.projectDirectory.file('gradle/docs-config.gradle')
+    from rootProject.layout.projectDirectory.file('gradle/test-config.gradle')
 }

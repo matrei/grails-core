@@ -24,6 +24,7 @@ import org.apache.groovy.ast.tools.AnnotatedNodeUtils
 import org.codehaus.groovy.ast.AnnotationNode
 import org.codehaus.groovy.ast.ClassHelper
 import org.codehaus.groovy.ast.ClassNode
+import org.codehaus.groovy.ast.Parameter
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.ast.expr.ListExpression
 import org.codehaus.groovy.ast.stmt.BlockStatement
@@ -62,9 +63,30 @@ class ApplicationClassInjector implements GrailsArtefactClassInjector {
 
     public static final String EXCLUDE_MEMBER = 'exclude'
     public static final List<String> EXCLUDED_AUTO_CONFIGURE_CLASSES = [
-            'org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration',
-            'org.springframework.boot.autoconfigure.reactor.ReactorAutoConfiguration',
-            'org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration'
+            'org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration',
+            'org.springframework.boot.reactor.autoconfigure.ReactorAutoConfiguration',
+            'org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration'
+    ]
+
+    /**
+     * Auto-configuration classes that are conditionally excluded when
+     * a specific plugin is detected on the classpath. Each entry maps a
+     * plugin class (checked via {@link ClassUtils#isPresent}) to the
+     * auto-configuration class name to exclude, with an optional system
+     * property that can disable the exclusion.
+     *
+     * <p>The system property defaults to {@code "true"} (exclusion enabled).
+     * Set it to {@code "false"} in {@code gradle.properties} to opt out:</p>
+     * <pre>
+     * systemProp.grails.autoconfigure.exclude.liquibase=false
+     * </pre>
+     */
+    static final List<Map<String, String>> CONDITIONAL_EXCLUSIONS = [
+            [
+                    pluginClass: 'org.grails.plugins.databasemigration.DatabaseMigrationGrailsPlugin',
+                    excludeClass: 'org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration',
+                    systemProperty: 'grails.autoconfigure.exclude.liquibase'
+            ]
     ]
 
     ApplicationArtefactHandler applicationArtefactHandler = new ApplicationArtefactHandler()
@@ -99,7 +121,7 @@ class ApplicationClassInjector implements GrailsArtefactClassInjector {
                 ]
                 classNode.addStaticInitializerStatements(statements, true)
 
-                def packageNamesMethod = classNode.getMethod('packageNames', GrailsASTUtils.ZERO_PARAMETERS)
+                def packageNamesMethod = classNode.getMethod('packageNames', Parameter.EMPTY_ARRAY)
 
                 if (packageNamesMethod == null || packageNamesMethod.declaringClass != classNode) {
                     def collectionClassNode = GrailsASTUtils.replaceGenericsPlaceholders(ClassHelper.make(Collection), [E: ClassHelper.make(String)])
@@ -114,7 +136,7 @@ class ApplicationClassInjector implements GrailsArtefactClassInjector {
                             GrailsASTUtils.error(source, classNode, "Do not place Groovy sources in common package names such as 'org', 'com', 'io' or 'net' as this can result in performance degradation of classpath scanning")
                         }
                         packageNamesBody.addStatement(new ReturnStatement(new ExpressionStatement(new ListExpression(packageNames.toList()))))
-                        AnnotatedNodeUtils.markAsGenerated(classNode, classNode.addMethod('packageNames', Modifier.PUBLIC, collectionClassNode, ZERO_PARAMETERS, null, packageNamesBody))
+                        AnnotatedNodeUtils.markAsGenerated(classNode, classNode.addMethod('packageNames', Modifier.PUBLIC, collectionClassNode, Parameter.EMPTY_ARRAY, ClassNode.EMPTY_ARRAY, packageNamesBody))
                     }
                 }
 
@@ -122,10 +144,22 @@ class ApplicationClassInjector implements GrailsArtefactClassInjector {
                 addAnnotation('org.springframework.boot.SpringBootConfiguration', classNode)?.with {
                     GrailsASTUtils.addExpressionToAnnotationMember(it, 'proxyBeanMethods', constX(false))
                 }
-                addAnnotation('org.springframework.web.servlet.config.annotation.EnableWebMvc', classNode, 'jakarta.servlet.ServletContext')
-                addAnnotation('org.springframework.boot.autoconfigure.EnableAutoConfiguration', classNode)?.with {
-                    for (excludeClassName in EXCLUDED_AUTO_CONFIGURE_CLASSES) {
-                        GrailsASTUtils.addExpressionToAnnotationMember(it, 'excludeName', constX(excludeClassName))
+                addAnnotation('org.springframework.boot.autoconfigure.EnableAutoConfiguration', classNode)?.with { annotation ->
+                    EXCLUDED_AUTO_CONFIGURE_CLASSES.each {
+                        GrailsASTUtils.addExpressionToAnnotationMember(
+                                annotation,
+                                'excludeName',
+                                constX(it)
+                        )
+                    }
+                    CONDITIONAL_EXCLUSIONS.each {
+                        if (shouldExcludeConditionalAutoConfiguration(it)) {
+                            GrailsASTUtils.addExpressionToAnnotationMember(
+                                    annotation,
+                                    'excludeName',
+                                    constX(it.excludeClass)
+                            )
+                        }
                     }
                 }
             }
@@ -137,6 +171,12 @@ class ApplicationClassInjector implements GrailsArtefactClassInjector {
         if (url == null) return false
         def res = new UrlResource(url)
         return GrailsResourceUtils.isGrailsResource(res) && res.filename == 'Application.groovy'
+    }
+
+    private static boolean shouldExcludeConditionalAutoConfiguration(Map<String, String> target) {
+        def classLoader = ApplicationClassInjector.classLoader
+        Boolean.parseBoolean(System.getProperty(target.systemProperty, 'true'))
+                && ClassUtils.isPresent(target.pluginClass, classLoader)
     }
 
     private AnnotationNode addAnnotation(String annotationClassName, ClassNode classNode, String conditionalClass = null) {

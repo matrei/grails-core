@@ -21,17 +21,20 @@ package org.apache.grails.gradle.tasks.bom
 
 import java.util.regex.Pattern
 
-import io.spring.gradle.dependencymanagement.org.apache.maven.model.Model
-import io.spring.gradle.dependencymanagement.org.apache.maven.model.io.xpp3.MavenXpp3Reader
+import org.apache.maven.model.Model
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.NamedDomainObjectProvider
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.DependencyConstraint
 import org.gradle.api.artifacts.ExcludeRule
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.component.ModuleComponentSelector
+import org.gradle.api.artifacts.dsl.DependencyHandler
+import org.gradle.api.artifacts.component.ProjectComponentSelector
 import org.gradle.api.artifacts.result.DependencyResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.file.ConfigurableFileCollection
@@ -42,6 +45,7 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
@@ -83,17 +87,45 @@ abstract class ExtractDependenciesTask extends DefaultTask {
     @Input
     abstract MapProperty<String, String> getProjectCoordinateProperties()
 
+    // Captured at configuration time to avoid deprecated Task.project access at execution time.
+    // See: https://docs.gradle.org/current/userguide/configuration_cache.html#config_cache:requirements:use_project_during_execution
+    @Internal
+    DependencyHandler dependencyHandler
+
+    @Internal
+    ConfigurationContainer configurationContainer
+
+    /**
+     * When {@code true}, transitive platform dependencies that are not explicitly
+     * registered in {@code combinedPlatforms} / {@code dependencies.gradle} will be
+     * auto-registered in {@link PropertyNameCalculator} instead of causing a build
+     * failure.  This is required for BOMs that import an external platform via the
+     * gradle module format (e.g. {@code micronaut-platform}) which itself imports
+     * many sub-BOMs that Grails does not manage directly.
+     *
+     * <p>Defaults to {@code false} so that existing BOMs (grails-bom, grails-base-bom)
+     * retain the strict validation that every platform dependency has a known property
+     * name in {@code dependencies.gradle}.</p>
+     */
+    @Input
+    abstract Property<Boolean> getAutoRegisterTransitivePlatforms()
+
     void setConfiguration(NamedDomainObjectProvider<Configuration> config) {
         dependencyArtifacts.from(config)
         configurationName.set(config.name)
     }
 
     ExtractDependenciesTask() {
-        doFirst {
-            if (!project.pluginManager.hasPlugin('java-platform')) {
-                throw new GradleException(/The 'java-platform' plugin must be applied to the project to use this task./)
-            }
-        }
+        autoRegisterTransitivePlatforms.convention(false)
+    }
+
+    /**
+     * Captures project-scoped services at configuration time so they can be used
+     * at execution time without accessing the deprecated Task.project property.
+     */
+    void captureProjectServices(DependencyHandler dependencies, ConfigurationContainer configurations) {
+        this.dependencyHandler = dependencies
+        this.configurationContainer = configurations
     }
 
     @TaskAction
@@ -115,7 +147,7 @@ abstract class ExtractDependenciesTask extends DefaultTask {
             propertyNameCalculator.addProject(coordinates.groupId, coordinates.artifactId, coordinates.version, entry.value)
         }
 
-        Configuration configuration = project.configurations.named(configurationName.get()).get()
+        Configuration configuration = configurationContainer.named(configurationName.get()).get()
         if (!configuration.canBeResolved) {
             throw new GradleException("The configuration ${configuration.name} must be resolvable to use this task.")
         }
@@ -188,6 +220,13 @@ abstract class ExtractDependenciesTask extends DefaultTask {
             }
 
             ResolvedDependencyResult dep = (ResolvedDependencyResult) result
+
+            // Skip project dependencies (e.g. platform(project(':grails-bom'))) since their
+            // constraints are already captured through the explicit constraints population
+            if (dep.requested instanceof ProjectComponentSelector) {
+                continue
+            }
+
             ModuleComponentSelector moduleComponentSelector = dep.requested as ModuleComponentSelector
 
             // Any non-constraint via api dependency should *always* be a platform dependency, so expand each of those
@@ -199,6 +238,16 @@ abstract class ExtractDependenciesTask extends DefaultTask {
 
             // fetch the BOM as a pom file so it can be expanded
             ExtractedDependencyConstraint constraint = propertyNameCalculator.calculate(bomCoordinate.groupId, bomCoordinate.artifactId, bomCoordinate.version, true)
+            if (!constraint) {
+                if (autoRegisterTransitivePlatforms.get()) {
+                    // Auto-register the transitive platform so it can be documented and expanded,
+                    // but without a version property reference since the version is managed by the
+                    // parent platform (e.g. micronaut-platform), not by a Grails property.
+                    constraint = new ExtractedDependencyConstraint(bomCoordinate.coordinates)
+                } else {
+                    throw new GradleException("Failed to find a property name for BOM dependency: ${bomCoordinate.coordinates}. All platform dependencies must have a property name defined meeting the naming requirements.")
+                }
+            }
             constraint.source = bomCoordinate.artifactId
             constraints.put(bomCoordinate.toCoordinateHolder(), constraint)
 
@@ -208,17 +257,19 @@ abstract class ExtractDependenciesTask extends DefaultTask {
     }
 
     Properties populatePlatformDependencies(CoordinateVersionHolder bomCoordinates, List<CoordinateHolder> exclusionRules, Map<CoordinateHolder, ExtractedDependencyConstraint> constraints, boolean error = true, int level = 0) {
-        Dependency bomDependency = project.dependencies.create("${bomCoordinates.coordinates}@pom")
-        Configuration dependencyConfiguration = project.configurations.detachedConfiguration(bomDependency)
+        def bomDependency = dependencyHandler.create("${bomCoordinates.coordinates}@pom")
+        def dependencyConfiguration = configurationContainer.detachedConfiguration(bomDependency).tap {
+            transitive = false
+        }
         File bomPomFile = dependencyConfiguration.singleFile
 
-        MavenXpp3Reader reader = new MavenXpp3Reader()
-        Model model = reader.read(new FileReader(bomPomFile))
+        // Parse the BOM POM with Maven's own model library so resolution mirrors upstream Maven.
+        Model model = bomPomFile.withInputStream { InputStream input -> new MavenXpp3Reader().read(input) }
+        def versionProperties = new Properties()
 
-        Properties versionProperties = new Properties()
+        // Parent POM populated first so its properties can be overridden by the child
         if (model.parent) {
-            // Need to populate the parent bom if it's present first
-            CoordinateVersionHolder parentBom = new CoordinateVersionHolder(
+            def parentBom = new CoordinateVersionHolder(
                     groupId: model.parent.groupId,
                     artifactId: model.parent.artifactId,
                     version: model.parent.version
@@ -227,68 +278,73 @@ abstract class ExtractDependenciesTask extends DefaultTask {
                 versionProperties.put(entry.key, entry.value)
             }
         }
+
         model.properties.entrySet().each { Map.Entry<Object, Object> entry ->
             versionProperties.put(entry.key, entry.value)
         }
         versionProperties.put('project.groupId', bomCoordinates.groupId)
         versionProperties.put('project.version', bomCoordinates.version)
 
-        if (model.dependencyManagement && model.dependencyManagement.dependencies) {
-            for (io.spring.gradle.dependencymanagement.org.apache.maven.model.Dependency depItem : model.dependencyManagement.dependencies) {
-                CoordinateHolder baseCoordinates = new CoordinateHolder(
-                        groupId: depItem.groupId,
-                        artifactId: depItem.artifactId
-                )
-
-                CoordinateHolder resolvedCoordinates = new CoordinateHolder(
-                        groupId: resolveMavenProperty(baseCoordinates.coordinatesWithoutVersion, depItem.groupId, versionProperties),
-                        artifactId: resolveMavenProperty(baseCoordinates.coordinatesWithoutVersion, depItem.artifactId, versionProperties)
-                )
-
-                if (!constraints.containsKey(resolvedCoordinates)) {
-                    boolean isExcluded = exclusionRules.any { CoordinateHolder excludedCoordinate ->
-                        if (excludedCoordinate.groupId && excludedCoordinate.artifactId) {
-                            return resolvedCoordinates == excludedCoordinate
-                        }
-
-                        if (excludedCoordinate.groupId && !excludedCoordinate.artifactId) {
-                            return depItem.groupId == excludedCoordinate.groupId
-                        }
-
-                        if (!excludedCoordinate.groupId && excludedCoordinate.artifactId) {
-                            return depItem.artifactId == excludedCoordinate.artifactId
-                        }
-
-                        false
-                    }
-
-                    if (!isExcluded) {
-                        String resolvedVersion = resolveMavenProperty(resolvedCoordinates.coordinatesWithoutVersion, depItem.version, versionProperties)
-                        String propertyName = depItem.version.contains('$') ? depItem.version : null
-                        ExtractedDependencyConstraint constraint = new ExtractedDependencyConstraint(
-                                groupId: resolvedCoordinates.groupId, artifactId: resolvedCoordinates.artifactId,
-                                version: resolvedVersion, versionPropertyReference: propertyName, source: bomCoordinates.artifactId
-                        )
-                        if (depItem.scope == 'import') {
-                            constraints.put(resolvedCoordinates, constraint)
-
-                            CoordinateVersionHolder resolvedBomCoordinates = new CoordinateVersionHolder(
-                                    groupId: resolvedCoordinates.groupId,
-                                    artifactId: resolvedCoordinates.artifactId,
-                                    version: resolvedVersion
-                            )
-                            populatePlatformDependencies(resolvedBomCoordinates, exclusionRules, constraints, error, level + 1)
-                        } else {
-                            constraints.put(resolvedCoordinates, constraint)
-                        }
-                    }
-                }
-            }
-        } else {
+        def managedDependencies = model.dependencyManagement?.dependencies ?: []
+        if (managedDependencies.isEmpty()) {
             if (error) {
                 // only the boms we directly include need to error since we expect a dependency management;
                 // parent boms are sometimes use to share properties so we need to not error on these cases
                 throw new GradleException("BOM ${bomCoordinates.coordinates} has no dependencyManagement section.")
+            }
+            return versionProperties
+        }
+
+        for (def depItem : managedDependencies) {
+            def baseCoordinates = new CoordinateHolder(
+                    groupId: depItem.groupId,
+                    artifactId: depItem.artifactId
+            )
+
+            def resolvedCoordinates = new CoordinateHolder(
+                    groupId: resolveMavenProperty(baseCoordinates.coordinatesWithoutVersion, depItem.groupId, versionProperties),
+                    artifactId: resolveMavenProperty(baseCoordinates.coordinatesWithoutVersion, depItem.artifactId, versionProperties)
+            )
+
+            if (constraints.containsKey(resolvedCoordinates)) {
+                continue
+            }
+
+            boolean isExcluded = exclusionRules.any { CoordinateHolder excludedCoordinate ->
+                if (excludedCoordinate.groupId && excludedCoordinate.artifactId) {
+                    return resolvedCoordinates == excludedCoordinate
+                }
+
+                if (excludedCoordinate.groupId && !excludedCoordinate.artifactId) {
+                    return depItem.groupId == excludedCoordinate.groupId
+                }
+
+                if (!excludedCoordinate.groupId && excludedCoordinate.artifactId) {
+                    return depItem.artifactId == excludedCoordinate.artifactId
+                }
+
+                false
+            }
+
+            if (isExcluded) {
+                continue
+            }
+
+            def resolvedVersion = resolveMavenProperty(resolvedCoordinates.coordinatesWithoutVersion, depItem.version, versionProperties)
+            def propertyName = depItem.version?.contains('$') ? depItem.version : null
+            def constraint = new ExtractedDependencyConstraint(
+                    groupId: resolvedCoordinates.groupId, artifactId: resolvedCoordinates.artifactId,
+                    version: resolvedVersion, versionPropertyReference: propertyName, source: bomCoordinates.artifactId
+            )
+            constraints.put(resolvedCoordinates, constraint)
+
+            if (depItem.scope == 'import') {
+                def resolvedBomCoordinates = new CoordinateVersionHolder(
+                        groupId: resolvedCoordinates.groupId,
+                        artifactId: resolvedCoordinates.artifactId,
+                        version: resolvedVersion
+                )
+                populatePlatformDependencies(resolvedBomCoordinates, exclusionRules, constraints, error, level + 1)
             }
         }
 

@@ -88,6 +88,11 @@ include::ref/Command Line/create-integration-test.adoc[]
 
 include::ref/Command Line/create-interceptor.adoc[]
 
+[[ref-command-line-create-job]]
+==== create-job
+
+include::ref/Command Line/create-job.adoc[]
+
 [[ref-command-line-create-plugin]]
 ==== create-plugin
 
@@ -565,10 +570,10 @@ include::ref/Database Mapping/table.adoc[]
 
 include::ref/Database Mapping/type.adoc[]
 
-[[ref-database-mapping-updateable]]
+[[ref-database-mapping-updatable]]
 ==== updateable
 
-include::ref/Database Mapping/updateable.adoc[]
+include::ref/Database Mapping/updatable.adoc[]
 
 [[ref-database-mapping-version]]
 ==== version
@@ -1138,6 +1143,11 @@ include::ref/Tags/fieldValue.adoc[]
 
 include::ref/Tags/findAll.adoc[]
 
+[[ref-tags-flashMessages]]
+==== flashMessages
+
+include::ref/Tags/flashMessages.adoc[]
+
 [[ref-tags-form]]
 ==== form
 
@@ -1337,3 +1347,23 @@ include::ref/Tags/uploadForm.adoc[]
 ==== while
 
 include::ref/Tags/while.adoc[]
+
+[[ref-triggers]]
+=== Triggers
+
+include::ref/Triggers.adoc[]
+
+[[ref-triggers-cron]]
+==== cron
+
+include::ref/Triggers/cron.adoc[]
+
+[[ref-triggers-custom]]
+==== custom
+
+include::ref/Triggers/custom.adoc[]
+
+[[ref-triggers-simple]]
+==== simple
+
+include::ref/Triggers/simple.adoc[]

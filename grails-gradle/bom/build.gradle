@@ -20,6 +20,8 @@
 plugins {
     id 'java-platform'
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
+    id 'org.apache.grails.buildsrc.bom-property-validator'
     id 'org.apache.grails.buildsrc.publish'
     id 'org.apache.grails.buildsrc.sbom'
 }
@@ -34,6 +36,8 @@ javaPlatform {
 ext {
     isReleaseBuild = System.getenv('GRAILS_PUBLISH_RELEASE') == 'true'
     isPublishedExternal = System.getenv().containsKey('NEXUS_PUBLISH_STAGING_PROFILE_ID')
+    // This BOM publishes the build tooling versions; validateBomProperties fails for any of them no entry uses
+    bomVersionProperties = gradleBomDependencyVersions
 }
 
 dependencies {
@@ -43,8 +47,8 @@ dependencies {
         exclude group: 'com.fasterxml.jackson'
     }
 
-    // Because gradle uses groovy 3, we must use groovy 3 compatible versions for the grails-gradle-bom
-    api platform("org.codehaus.groovy:groovy-bom:${GroovySystem.version}")
+    // Use the Groovy version defined in dependencies.gradle for consistency across builds
+    api platform(gradleBomPlatformDependencies['gradle-groovy-bom'])
     api platform(gradleBomPlatformDependencies['gradle-spock-bom'])
 
     constraints {

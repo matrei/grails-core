@@ -16,6 +16,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
+import org.apache.tools.ant.DirectoryScanner
 import org.gradle.api.initialization.resolve.RepositoriesMode
 
 pluginManagement {
@@ -25,11 +26,15 @@ pluginManagement {
     includeBuild('../build-logic') {
         name = 'build-logic-root'
     }
+    apply from: file('../gradle/plugin-repositories.gradle')
+    repositories {
+        configurePluginRepositories(delegate)
+    }
 }
 
 plugins {
-    id 'com.gradle.develocity' version '4.1.1'
-    id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.3'
+    id 'com.gradle.develocity' version '4.5.0'
+    id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.4.0'
     id 'org.apache.grails.buildsrc.repo'
 }
 
@@ -38,7 +43,7 @@ def isLocal = !isCI
 def isReproducibleBuild = System.getenv('SOURCE_DATE_EPOCH') != null
 
 develocity {
-    server = 'https://ge.grails.org'
+    server = 'https://develocity.apache.org'
     buildScan {
         tag('grails')
         tag('grails-forge')
@@ -73,4 +78,11 @@ includeBuild('..') {
 }
 includeBuild('../grails-gradle') {
     name = 'grails-gradle'
+}
+
+// Due to https://github.com/gradle/gradle/issues/2986 , we can't change the global exclude for profiles, it must be done everywhere
+for (String pattern in DirectoryScanner.defaultExcludes) {
+    if (pattern.contains('gitignore') || pattern.contains('gitattributes')) {
+        DirectoryScanner.removeDefaultExclude(pattern)
+    }
 }

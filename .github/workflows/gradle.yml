@@ -20,32 +20,127 @@ on:
       - '[0-9]+.[0-9]+.x'
   pull_request:
   workflow_dispatch:
-# queue jobs and only allow 1 run per branch due to the likelihood of hitting GitHub resource limits
+# Queue jobs - cancel in-progress PR runs when new commits pushed, but allow branch builds to complete
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  validateDependencies:
+    name: 'Validate Dependency Versions'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
+        with:
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Validate grails-core dependency versions"
+        run: >
+          ./gradlew validateDependencyVersions
+          --continue
+          --stacktrace
+      - name: "🔍 Validate grails-core production classpath"
+        run: >
+          ./gradlew validateProductionClasspath
+          --continue
+          --stacktrace
+      - name: "🔍 Validate grails-gradle dependency versions"
+        working-directory: 'grails-gradle'
+        run: >
+          ./gradlew validateDependencyVersions
+          --continue
+          --stacktrace
+  validateBomProperties:
+    name: 'Validate BOM Properties'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
+        with:
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Validate grails-core BOM properties"
+        run: >
+          ./gradlew validateBomProperties
+          --continue
+          --stacktrace
+      - name: "🔍 Validate grails-gradle BOM properties"
+        working-directory: 'grails-gradle'
+        run: >
+          ./gradlew validateBomProperties
+          --continue
+          --stacktrace
   buildGradle:
     name: 'Build Gradle Plugins'
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21 ]
+        java: [ 21, 25 ]
     runs-on: ubuntu-24.04
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
           java-version: ${{ matrix.java }}
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "🔨 Build project without tests"
         if: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-gradle'
@@ -66,56 +161,217 @@ jobs:
           -PskipCodeStyle
   build:
     if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
-    name: 'Build Grails-Core'
+    name: 'Build Grails-Core (${{ matrix.job_name }})'
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21, 24 ]
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        include:
+          - os: ubuntu-latest
+            java: 21
+            job_name: Ubuntu JDK 21
+            gradle_task: 'build :grails-shell-cli:installDist groovydoc'
+            cache_writer: true
+          - os: ubuntu-latest
+            java: 25
+            job_name: Ubuntu JDK 25
+            gradle_task: 'build :grails-shell-cli:installDist groovydoc'
+            cache_writer: false
+          - os: macos-latest
+            java: 21
+            job_name: macOS JDK 21
+            gradle_task: 'build :grails-shell-cli:installDist groovydoc'
+            # The macOS runner has ~7 GB of RAM and 3 CPUs, against ~16 GB and 4 CPUs on the
+            # Linux and Windows runners, so it has the least room for concurrent JVMs.
+            # Capping only maxTestParallel would not help: that is a per-Test-task limit, and
+            # with org.gradle.parallel=true several projects' test tasks run at once, so the
+            # number of live forks is bounded by Gradle's global worker pool - which defaults
+            # to the 3 CPUs here. --max-workers is therefore the setting that actually limits
+            # concurrent test, compiler and groovydoc JVMs; maxTestParallel is kept alongside
+            # it so no single task exceeds that cap either.
+            runner_arguments: '--max-workers=2 -PmaxTestParallel=2'
+            cache_writer: true
+          - os: windows-latest
+            java: 25
+            job_name: Windows JDK 25 shard 0
+            gradle_task: 'build :grails-shell-cli:installDist groovydoc'
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=0'
+            cache_writer: true
+          - os: windows-latest
+            java: 25
+            job_name: Windows JDK 25 shard 1
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=1'
+            cache_writer: false
+          - os: windows-latest
+            java: 25
+            job_name: Windows JDK 25 shard 2
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=2'
+            cache_writer: false
     runs-on: ${{ matrix.os }}
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
           java-version: ${{ matrix.java }}
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+      - name: "🗄️ Restore dependency jar cache"
+        id: dependency-cache
+        uses: actions/cache/restore@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "🔨 Build project"
         run: >
-          ./gradlew build :grails-shell-cli:installDist groovydoc
+          ./gradlew ${{ matrix.gradle_task }}
+          --continue
+          --stacktrace
+          -PonlyCoreTests
+          -PskipCodeStyle
+          ${{ matrix.shard_arguments }}
+          ${{ matrix.runner_arguments }}
+      - name: "🗄️ Save dependency jar cache"
+        if: ${{ success() && matrix.cache_writer && steps.dependency-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+  buildRerunTasks:
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    name: 'Build Grails-Core Rerunning all Tasks (${{ matrix.job_name }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: 21
+            job_name: Ubuntu JDK 21 build
+            gradle_task: 'build :grails-shell-cli:installDist groovydoc'
+            extra_arguments: '-PskipTests'
+            cache_writer: true
+          - os: ubuntu-latest
+            java: 21
+            job_name: Ubuntu JDK 21 shard 0
+            gradle_task: testShard
+            extra_arguments: '-PtestShardCount=3 -PtestShardIndex=0'
+            cache_writer: false
+          - os: ubuntu-latest
+            java: 21
+            job_name: Ubuntu JDK 21 shard 1
+            gradle_task: testShard
+            extra_arguments: '-PtestShardCount=3 -PtestShardIndex=1'
+            cache_writer: false
+          - os: ubuntu-latest
+            java: 21
+            job_name: Ubuntu JDK 21 shard 2
+            gradle_task: testShard
+            extra_arguments: '-PtestShardCount=3 -PtestShardIndex=2'
+            cache_writer: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: ${{ matrix.java }}
+      - name: "🗄️ Restore dependency jar cache"
+        id: dependency-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
+      - name: "🔨 Build project"
+        run: >
+          ./gradlew ${{ matrix.gradle_task }}
           --continue
           --rerun-tasks
           --stacktrace
           -PonlyCoreTests
           -PskipCodeStyle
+          ${{ matrix.extra_arguments }}
+      - name: "🗄️ Save dependency jar cache"
+        if: ${{ success() && matrix.cache_writer && steps.dependency-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
   buildForge:
-    name: "Build Grails Forge"
+    name: "Build Grails Forge (Java ${{ matrix.java }}, indy=${{ matrix.indy }})"
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21 ]
+        java: [ 21, 25 ]
+        indy: [ false ]
+        include:
+          - java: 21
+            indy: true
     runs-on: ubuntu-24.04
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: 'liberica'
           java-version: ${{ matrix.java }}
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "🔨 Build project without tests"
         if: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
         working-directory: 'grails-forge'
@@ -123,6 +379,7 @@ jobs:
           ./gradlew build
           --continue
           --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
           -PskipCodeStyle
           -PskipTests
       - name: "🔨 Build project with tests"
@@ -133,6 +390,7 @@ jobs:
           --continue
           --rerun-tasks
           --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
           -PskipCodeStyle
       - name: "✅ Verify combined CLI"
         run: |
@@ -143,111 +401,514 @@ jobs:
           ./tmp1/cli/bin/grails --version
           ./tmp1/cli/bin/grails-forge-cli --version
       - name: "📤 Upload CLI Zip to Workflow Summary Page"
-        if: ${{ matrix.java == '17' }}
-        uses: actions/upload-artifact@v6
+        if: ${{ matrix.java == '21' && matrix.indy == false }}
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: 'apache-grails-SNAPSHOT-bin.zip'
           include-hidden-files: true
           path: grails-forge/tmp1/cli/**/*
           if-no-files-found: 'error'
+  # Every test job from here through neo4jFunctional sets timeout-minutes to twice the slowest run that
+  # finished on its own, passed or failed, over the 160 CI runs of 2026-09-03 to 2026-09-13, rounded up to
+  # the half hour. Without a limit, a test JVM that never exits holds its job for GitHub's six-hour default.
   functional:
-    name: "Functional Tests"
+    name: "Functional Tests (${{ matrix.job_name }})"
     if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    timeout-minutes: 150 # slowest run: 63 min
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21, 24 ]
+        include:
+          - java: 21
+            indy: false
+            job_name: Java 21, indy=false
+            gradle_task: 'bootJar check'
+            artifact_suffix: java21-indyfalse-shard0
+            cache_writer: true
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 21
+            indy: false
+            job_name: Java 21, indy=false, shard 1
+            gradle_task: testShard
+            artifact_suffix: java21-indyfalse-shard1
+            cache_writer: false
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
+          - java: 21
+            indy: true
+            job_name: Java 21, indy=true
+            gradle_task: 'bootJar check'
+            artifact_suffix: java21-indytrue-shard0
+            cache_writer: false
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 21
+            indy: true
+            job_name: Java 21, indy=true, shard 1
+            gradle_task: testShard
+            artifact_suffix: java21-indytrue-shard1
+            cache_writer: false
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
+          - java: 25
+            indy: false
+            job_name: Java 25, indy=false
+            gradle_task: 'bootJar check'
+            artifact_suffix: java25-indyfalse-shard0
+            cache_writer: false
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 25
+            indy: false
+            job_name: Java 25, indy=false, shard 1
+            gradle_task: testShard
+            artifact_suffix: java25-indyfalse-shard1
+            cache_writer: false
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
     runs-on: ubuntu-24.04
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: ${{ matrix.java }}
+      - name: "🗄️ Restore dependency jar cache"
+        id: dependency-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
+      - name: "🏃 Run Functional Tests"
+        run: >
+          ./gradlew ${{ matrix.gradle_task }}
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
+          -PonlyFunctionalTests
+          -PskipCodeStyle
+          -PskipHibernate5Tests
+          -PskipHibernate7Tests
+          -PskipMongodbTests
+          -PskipNeo4jTests
+          -PskipSpringSecurityTests
+          -PskipRedisTests
+          ${{ matrix.shard_arguments }}
+      - name: "🗄️ Save dependency jar cache"
+        if: ${{ success() && matrix.cache_writer && steps.dependency-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+      - name: "📤 Upload Geb Reports"
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: geb-reports-functional-${{ matrix.artifact_suffix }}
+          path: '**/build/geb-reports/'
+          if-no-files-found: ignore
+  security:
+    name: "Spring Security Tests (${{ matrix.job_name }})"
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    timeout-minutes: 150 # slowest run: 71 min
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - java: 21
+            job_name: Java 21
+            gradle_task: 'bootJar check'
+          - java: 25
+            job_name: Java 25
+            gradle_task: 'bootJar check'
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 25
+            job_name: Java 25, shard 1
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
           java-version: ${{ matrix.java }}
       - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "🏃 Run Functional Tests"
+        run: >
+          ./gradlew ${{ matrix.gradle_task }}
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -PonlySpringSecurityTests
+          -PskipCodeStyle
+          ${{ matrix.shard_arguments }}
+  securityConfig:
+    name: "Spring Security Config Functional Tests"
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    timeout-minutes: 90 # slowest run: 39 min
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each value boots the core functional-test-app with a different Spring Security configuration.
+        # The specs are gated with @IgnoreIf({ System.getProperty('TESTCONFIG') != '<config>' }), so a
+        # config only runs when TESTCONFIG matches. TESTCONFIG is applied at app startup, so every config
+        # must be its own run. Carried over from the standalone grails-spring-security CI — do not drop
+        # configs (add, don't remove) when the app's security configurations change.
+        test-config: [ 'static', 'annotation', 'requestmap', 'basic', 'basicCacheUsers', 'misc', 'putWithParams', 'bcrypt', 'issue503' ]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: 21
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
+      - name: "🏃 Run Spring Security Functional Tests (TESTCONFIG=${{ matrix.test-config }})"
+        run: >
+          ./gradlew
+          :grails-test-examples-spring-security-core-functional-test-app:check
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -DTESTCONFIG=${{ matrix.test-config }}
+          -PskipCodeStyle
+  casSecurityConfig:
+    name: "Spring Security CAS Functional Tests"
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    timeout-minutes: 90 # slowest run: 35 min
+    strategy:
+      fail-fast: false
+      matrix:
+        # The CAS test app authenticates against a real Apereo CAS server started via Testcontainers.
+        # 'cas' leaves the proxy settings unset; 'casProxy' exercises the proxy-granting-ticket
+        # callback; 'casNoSingleSignout' asserts the shipped default, where single signout is off.
+        # TESTCONFIG is applied at app startup, so every config must be its own run. The specs are
+        # gated on a config being selected, so the broad 'security' job skips them and no config is
+        # run twice.
+        # Carried over from the standalone grails-spring-security CI convention - add, don't remove.
+        test-config: [ 'cas', 'casProxy', 'casNoSingleSignout' ]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: 21
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
+      - name: "🏃 Run Spring Security CAS Functional Tests (TESTCONFIG=${{ matrix.test-config }})"
+        run: >
+          ./gradlew
+          :grails-test-examples-spring-security-cas-test1:check
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -DTESTCONFIG=${{ matrix.test-config }}
+          -PskipCodeStyle
+  redis:
+    name: "Redis Tests"
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    timeout-minutes: 180 # slowest run: 86 min
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ 21, 25 ]
+        redis-version: [ '7.4', '8.0' ] # Redis container version exercised via Testcontainers
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: ${{ matrix.java }}
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
+      - name: "🏃 Run Redis Tests"
         run: >
           ./gradlew bootJar check
           --continue
           --rerun-tasks
           --stacktrace
-          -PgebAtCheckWaiting
-          -PonlyFunctionalTests
+          -PonlyRedisTests
+          -PredisContainerVersion=${{ matrix.redis-version }}
           -PskipCodeStyle
-          -PskipHibernate5Tests
-          -PskipMongodbTests
   mongodbFunctional:
     if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
-    name: "Mongodb Functional Tests"
+    name: "Mongodb Functional Tests (Java ${{ matrix.java }}, MongoDB ${{ matrix.mongodb-version }}, indy=${{ matrix.indy }})"
+    timeout-minutes: 150 # slowest run: 70 min
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21 ]
+        java: [ 21, 25 ]
         mongodb-version: [ '7.0', '8.0' ] # test with supported versions https://www.mongodb.com/legal/support-policy/lifecycles
+        indy: [ false ]
+        include:
+          - java: 21
+            mongodb-version: '7.0'
+            indy: true
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout the repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
           java-version: ${{ matrix.java }}
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🗄️ Cache the mongod the embedded server runs"
+        uses: actions/cache@v6.1.0
+        with:
+          # Kept apart from the dependency jars: this holds an immutable download from
+          # fastdl.mongodb.org - the archive and the binary extracted out of it - and no database,
+          # so it belongs to no branch and does not change when a dependency version does.
+          # Keyed by the version this entry asks for, because the matrix runs more than one and a
+          # single key would keep whichever job missed first and leave the other restoring 250MB
+          # of a binary it cannot use. No restore-keys, for that same reason.
+          path: ~/.embedmongo
+          key: embedmongo-${{ runner.os }}-${{ matrix.mongodb-version }}
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
       - name: "🏃 Run Functional Tests"
         env:
           GITHUB_MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: >
-          ./gradlew bootJar cleanTest check
+          ./gradlew bootJar check
           --continue
           --rerun-tasks
           --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
           -PonlyMongodbTests
           -PmongodbContainerVersion=${{ matrix.mongodb-version }}
           -PskipCodeStyle
   hibernate5Functional:
     if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
-    name: "Hibernate5 Functional Tests"
+    name: "Hibernate5 Functional Tests (Java ${{ matrix.java }}, indy=${{ matrix.indy }})"
+    timeout-minutes: 120 # slowest run: 58 min
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        java: [ 17, 21 ]
+        java: [ 21, 25 ]
+        indy: [ false ]
+        include:
+          - java: 21
+            indy: true
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout the repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
           java-version: ${{ matrix.java }}
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
       - name: "🏃 Run Functional Tests"
         env:
           GITHUB_MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: >
-          ./gradlew bootJar cleanTest check
+          ./gradlew bootJar check
           --continue
           --rerun-tasks
           --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
           -PonlyHibernate5Tests
+          -PskipCodeStyle
+  hibernate7Functional:
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    name: "Hibernate7 Functional Tests (${{ matrix.job_name }})"
+    timeout-minutes: 210 # slowest run: 104 min, which failed; the slowest that passed took 86
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - java: 21
+            indy: false
+            job_name: Java 21, indy=false
+            gradle_task: 'bootJar check'
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=0'
+          - java: 21
+            indy: false
+            job_name: Java 21, indy=false, shard 1
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=1'
+          - java: 21
+            indy: false
+            job_name: Java 21, indy=false, shard 2
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=3 -PtestShardIndex=2'
+          - java: 21
+            indy: true
+            job_name: Java 21, indy=true
+            gradle_task: 'bootJar check'
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 21
+            indy: true
+            job_name: Java 21, indy=true, shard 1
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
+          - java: 25
+            indy: false
+            job_name: Java 25, indy=false
+            gradle_task: 'bootJar check'
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=0'
+          - java: 25
+            indy: false
+            job_name: Java 25, indy=false, shard 1
+            gradle_task: testShard
+            shard_arguments: '-PtestShardCount=2 -PtestShardIndex=1'
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout the repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: ${{ matrix.java }}
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+      - name: "🏃 Run Functional Tests"
+        env:
+          GITHUB_MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          ./gradlew ${{ matrix.gradle_task }}
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
+          -PonlyHibernate7Tests
+          -PskipCodeStyle
+          ${{ matrix.shard_arguments }}
+  neo4jFunctional:
+    if: ${{ !contains(github.event.head_commit.message, '[skip tests]') }}
+    name: "Neo4j Functional Tests (Java ${{ matrix.java }}, indy=${{ matrix.indy }})"
+    timeout-minutes: 180 # slowest run: 90 min
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ 21, 25 ]
+        indy: [ false ]
+        include:
+          - java: 21
+            indy: true
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout the repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: ${{ matrix.java }}
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic # 'basic' uses the MIT-licensed, open-source cache provider; the default 'enhanced' provider (v6+) is proprietary (Gradle commercial Terms of Use)
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+      - name: "🏃 Run Functional Tests"
+        env:
+          GITHUB_MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          ./gradlew bootJar check
+          --continue
+          --rerun-tasks
+          --stacktrace
+          -PgrailsIndy=${{ matrix.indy }}
+          -PonlyNeo4jTests
           -PskipCodeStyle
   publishGradle:
     if: github.repository_owner == 'apache' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -257,16 +918,30 @@ jobs:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
-          java-version: 17
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "📤 Publish Gradle Snapshot Artifacts"
         env:
           GRAILS_PUBLISH_RELEASE: 'false'
@@ -279,81 +954,95 @@ jobs:
           --no-build-cache
           --rerun-tasks
       - name: "📤 Upload grails-gradle checksums"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-gradle-checksums
           path: grails-gradle/build/grails-gradle-checksums.txt
       - name: "📤 Upload grails-gradle published artifacts"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-gradle-artifacts.txt
           path: grails-gradle/build/grails-gradle-artifacts.txt
   publish:
-    needs: [ publishGradle, build, functional, hibernate5Functional, mongodbFunctional ]
+    needs: [ publishGradle, build, functional, security, securityConfig, redis, hibernate5Functional, hibernate7Functional, mongodbFunctional, neo4jFunctional ]
     if: >-
-      ${{ always() && 
-          github.repository_owner == 'apache' && 
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 
-          needs.publishGradle.result == 'success' && 
-          (needs.build.result == 'success' || needs.build.result == 'skipped') && 
-          (needs.functional.result == 'success' || needs.functional.result == 'skipped') && 
-          (needs.hibernate5Functional.result == 'success' || needs.hibernate5Functional.result == 'skipped') && 
-          (needs.mongodbFunctional.result == 'success' || needs.mongodbFunctional.result == 'skipped') 
+      ${{ always() &&
+          github.repository_owner == 'apache' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          needs.publishGradle.result == 'success' &&
+          (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+          (needs.functional.result == 'success' || needs.functional.result == 'skipped') &&
+          (needs.security.result == 'success' || needs.security.result == 'skipped') &&
+          (needs.securityConfig.result == 'success' || needs.securityConfig.result == 'skipped') &&
+          (needs.redis.result == 'success' || needs.redis.result == 'skipped') &&
+          (needs.hibernate5Functional.result == 'success' || needs.hibernate5Functional.result == 'skipped') &&
+          (needs.hibernate7Functional.result == 'success' || needs.hibernate7Functional.result == 'skipped') &&
+          (needs.mongodbFunctional.result == 'success' || needs.mongodbFunctional.result == 'skipped') &&
+          (needs.neo4jFunctional.result == 'success' || needs.neo4jFunctional.result == 'skipped')
       }}
     runs-on: ubuntu-24.04
     steps:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
-          java-version: 17
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "📤 Publish Grails-Core Snapshot Artifacts"
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 #v3.0.2 
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         env:
           GRAILS_PUBLISH_RELEASE: 'false'
           MAVEN_PUBLISH_URL: ${{ secrets.GRAILS_NEXUS_PUBLISH_SNAPSHOT_URL }}
           MAVEN_PUBLISH_USERNAME: ${{ secrets.NEXUS_USER }}
           MAVEN_PUBLISH_PASSWORD: ${{ secrets.NEXUS_PW  }}
         with: 
-          timeout_seconds: 1200 # normal range 14min if build is not cached (no tests running)
+          timeout_seconds: 3600 # normal range ~14-25min uncached (no tests); generous headroom for slow Nexus uploads so a single attempt is not killed mid-publish
           max_attempts: 3 # Attempts to address: Could not write to resource 'https://repository.apache.org/content/repositories/snapshots/...' Read timed out
           retry_wait_seconds: 180
           command: ./gradlew publish aggregateChecksums aggregatePublishedArtifacts --no-build-cache --rerun-tasks
       - name: "📤 Upload grails-core checksums"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-core-checksums.txt
           path: build/grails-core-checksums.txt
       - name: "📤 Upload grails-core published artifacts"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-core-artifacts.txt
           path: build/grails-core-artifacts.txt
       - name: "🔨 Create Grails Wrapper Distribution Zip"
-        run: >
-          ./gradlew :grails-wrapper:distZip
-      - name: "✅ Verify grails-wrapper"
-        if: success()
         run: |
-          export GRAILS_WRAPPER_ALLOWED_TYPES='SNAPSHOT'
+          ./gradlew :grails-wrapper:distZip
           cp grails-wrapper/build/distributions/apache-grails-wrapper-*.zip build/wrapper.zip
           cd build
           unzip wrapper -d tmp
           mv tmp/apache-grails-wrapper-* tmp/wrapper
-          ./tmp/wrapper/grailsw --version
       - name: "📤 Upload Wrapper Zip to Workflow Summary Page"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: apache-grails-wrapper-SNAPSHOT-bin
-          path: tmp/wrapper
+          path: build/tmp/wrapper
   publishForge:
     if: github.repository_owner == 'apache' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [ buildForge, publishGradle, publish ]
@@ -362,16 +1051,30 @@ jobs:
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
-          java-version: 17
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY  }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY  }}
+      - name: "🔍 Setup TestLens"
+        uses: testlens-app/setup-testlens@3f82d2dc6cd5c03f02ce5f7885a21195d85f8d14 # v1.9.3
       - name: "📤 Publish Gradle Snapshot Artifacts"
         env:
           GRAILS_PUBLISH_RELEASE: 'false'
@@ -384,34 +1087,70 @@ jobs:
           --no-build-cache
           --rerun-tasks
       - name: "📤 Upload grails-forge checksums"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-forge-checksums
           path: grails-forge/build/grails-forge-checksums.txt
       - name: "📤 Upload grails-gradle published artifacts"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-forge-artifacts.txt
           path: grails-forge/build/grails-forge-artifacts.txt
+  verifyWrapper:
+    name: "Verify grails-wrapper"
+    # Verifies the wrapper works end-to-end. Must run after publishForge so that
+    # grails-cli (which the wrapper resolves at runtime) is available in Nexus.
+    if: github.repository_owner == 'apache' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [ publish, publishForge ]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
+        run: curl -s https://api.ipify.org
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v7.0.1
+      - name: "☕️ Setup JDK"
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: liberica
+          java-version: 21
+      - name: "📥 Download Wrapper"
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: apache-grails-wrapper-SNAPSHOT-bin
+          path: wrapper
+      - name: "✅ Verify grails-wrapper"
+        env:
+          GRAILS_WRAPPER_ALLOWED_TYPES: 'SNAPSHOT'
+        run: |
+          # Pin the wrapper to this branch's snapshot so it doesn't resolve the
+          # globally latest SNAPSHOT in the Apache repo, which may be compiled
+          # for a newer Java runtime than this job's JDK.
+          export PREFERRED_GRAILS_VERSION=$(grep '^projectVersion=' gradle.properties | cut -d'=' -f2)
+          # actions/download-artifact does not preserve the executable bit, so
+          # restore it before invoking the wrapper script (see actions/upload-artifact#38).
+          chmod +x ./wrapper/grailsw
+          ./wrapper/grailsw --version
   docs:
     if: github.repository_owner == 'apache' && github.event_name == 'push'
     needs: [ publish ]
     runs-on: ubuntu-24.04
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@c28619d8999a147d5e09c1199f84ff6af6ad5794
-        with:
-          root-reserve-mb: 3072  # Leave ~3 GB on root FS
-          swap-size-mb: 2048     # Allocate 2 GB swap (default: 4 GB; reduce if not needed)
-          remove-dotnet: 'true'  # Remove .NET SDK (~3-4 GB savings)
-          remove-android: 'true' # Remove Android tools (~2 GB savings)
-          remove-haskell: 'true' # Remove Haskell (~1 GB savings)
-          remove-codeql: 'true'  # Remove CodeQL (~500 MB savings)
-          remove-docker-images: 'false'  # Prune Docker if used (~1-2 GB savings)
+      - name: "⚙️ Maximize build space"
+        run: |
+          echo "-- Dotnet"
+          sudo rm -rf /usr/share/dotnet
+          echo "-- Android"
+          sudo rm -rf /usr/local/lib/android
+          echo "-- Haskell"
+          sudo rm -rf /opt/ghc
+          echo "-- CodeQL"
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+          df -h
       - name: "Output Agent IP" # in the event RAO blocks this agent, this can be used to debug it
         run: curl -s https://api.ipify.org
       - name: "📥 Checkout the repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           fetch-tags: true
       - name: "🔀 Store current branch name"
@@ -425,20 +1164,32 @@ jobs:
           echo "NOW=${NOW}" >> $GITHUB_ENV
           echo "Current date: ${NOW}"
       - name: "☕️ Setup JDK"
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: liberica
-          java-version: 17
-      - name: "🐘 Setup Gradle"
-        uses: gradle/actions/setup-gradle@v4
+          java-version: 21
+      - name: "🗄️ Restore dependency jar cache"
+        uses: actions/cache@v6.1.0
         with:
-          develocity-access-key: ${{ secrets.GRAILS_DEVELOCITY_ACCESS_KEY }}
+          # Cache only downloaded dependency jars and wrapper distributions, never Grails build outputs.
+          # Keyed by branch version so each release branch maintains its own warm cache.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-${{ hashFiles('**/dependencies.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-${{ github.base_ref || github.ref_name }}-
+      - name: "🐘 Setup Gradle"
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true # dependency jars are cached by the explicit branch-keyed step above
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
       - name: "🔨 Build Snapshot Documentation"
         run: >
           ./gradlew grails-doc:build
           -PgithubBranch=${{ env.TARGET_BRANCH }}
       - name: "📤 Upload Generated Docs to Workflow Result Page"
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: grails-docs-${{ env.NOW }}.zip
           path: ./build/distributions/*.zip

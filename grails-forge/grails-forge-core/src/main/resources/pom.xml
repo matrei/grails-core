@@ -36,17 +36,12 @@
             <groupId>io.micronaut.platform</groupId>
             <artifactId>micronaut-platform</artifactId>
             <type>pom</type>
-            <version>4.10.1</version>
+            <version>4.10.16</version>
         </dependency>
         <dependency>
             <groupId>org.grails.plugins</groupId>
             <artifactId>grails-web-console</artifactId>
             <version>7.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.grails</groupId>
-            <artifactId>grails-quartz</artifactId>
-            <version>4.0.0</version>
         </dependency>
         <dependency>
             <!-- Last released Feb 24, 2021 -->
@@ -65,14 +60,15 @@
             <version>9.2.2</version>
         </dependency>
         <dependency>
-            <groupId>org.ysb33r</groupId>
-            <artifactId>webdriver-binaries</artifactId>
-            <version>4.0.0</version>
-        </dependency>
-        <dependency>
             <groupId>org.zeroturnaround</groupId>
             <artifactId>gradle-jrebel-plugin</artifactId>
             <version>1.2.1</version>
+        </dependency>
+        <dependency>
+            <!-- Force newer version to fix sun.misc.Unsafe::objectFieldOffset warning on Java 25 -->
+            <groupId>org.jboss.threads</groupId>
+            <artifactId>jboss-threads</artifactId>
+            <version>3.9.2</version>
         </dependency>
     </dependencies>
 </project>

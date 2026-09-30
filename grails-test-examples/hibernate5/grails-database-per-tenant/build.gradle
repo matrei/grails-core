@@ -19,10 +19,12 @@
 
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.gradle.grails-web'
     id 'org.apache.grails.gradle.grails-gsp'
     id 'cloud.wondrify.asset-pipeline'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 version = projectVersion
@@ -30,16 +32,16 @@ group = 'examples'
 
 dependencies {
     implementation platform(project(':grails-bom'))
+    testImplementation platform(project(':grails-bom'))
 
     implementation 'org.apache.grails:grails-data-hibernate5'
     implementation 'org.apache.grails:grails-core'
     implementation 'org.apache.grails:grails-rest-transforms'
     implementation 'org.apache.grails:grails-gsp'
-    if(System.getenv('SITEMESH3_TESTING_ENABLED') == 'true') {
-        implementation 'org.apache.grails:grails-sitemesh3'
-    }
-    else {
+    if (System.getenv('SITEMESH2_TESTING_ENABLED') == 'true') {
         implementation 'org.apache.grails:grails-layout'
+    } else {
+        implementation 'org.apache.grails:grails-sitemesh3'
     }
 
     testAndDevelopmentOnly platform(project(':grails-bom'))
@@ -57,6 +59,7 @@ dependencies {
     runtimeOnly 'org.springframework.boot:spring-boot-starter-tomcat'
 
     testImplementation 'org.apache.grails:grails-testing-support-datamapping'
+    testImplementation testFixtures('org.apache.grails.web:grails-web-common')
     testImplementation 'org.spockframework:spock-core'
 }
 

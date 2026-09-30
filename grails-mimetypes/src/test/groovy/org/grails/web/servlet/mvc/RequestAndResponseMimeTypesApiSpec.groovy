@@ -28,6 +28,7 @@ import org.grails.config.PropertySourcesConfig
 import org.grails.core.lifecycle.ShutdownOperations
 import org.grails.plugins.web.mime.MimeTypesConfiguration
 import org.grails.web.mime.DefaultMimeUtility
+import org.grails.web.mime.HttpServletResponseExtension
 import org.springframework.context.ApplicationContext
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.core.env.MapPropertySource
@@ -35,6 +36,7 @@ import org.springframework.core.env.MutablePropertySources
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockServletContext
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.support.GenericWebApplicationContext
 import spock.lang.Issue
 import spock.lang.Specification
@@ -53,12 +55,17 @@ class RequestAndResponseMimeTypesApiSpec extends Specification{
     }
 
     void setup() {
+        // Clear the static mimeTypes cache to prevent test environment pollution
+        HttpServletResponseExtension.@mimeTypes = null
         application = new DefaultGrailsApplication()
         application.config = testConfig
     }
     
     void cleanup() {
+        RequestContextHolder.resetRequestAttributes()
         ShutdownOperations.runOperations()
+        // Clear the static mimeTypes cache after each test for test isolation
+        HttpServletResponseExtension.@mimeTypes = null
     }
 
     void "Test format property is valid for CONTENT_TYPE header only"() {
@@ -117,8 +124,8 @@ class RequestAndResponseMimeTypesApiSpec extends Specification{
             response.format == 'json'
     }
 
-    void "Test format property is ignored for non-XHR and Accept header with User-Agent"() {
-        when: "The request CONTENT_TYPE header is 'text/xml'"
+    void "Test Accept header is honored for non-XHR requests with a browser User-Agent"() {
+        when: "The request has a browser User-Agent but no X-Requested-With header"
             final webRequest = boundMimeTypeRequest()
             MockHttpServletRequest request = webRequest.currentRequest
             def response = webRequest.currentResponse
@@ -126,11 +133,11 @@ class RequestAndResponseMimeTypesApiSpec extends Specification{
             request.addHeader('Accept', 'text/json')
             request.addHeader('User-Agent', 'Webkit')
 
-        then: "The request format should be 'json'"
+        then: "The Accept header is still used, so the response format is 'json'"
             request.getFormat() == "json"
             request.getFormat() == "json" // call twice to test cached value
             request.format == 'json'
-            response.format == 'all'
+            response.format == 'json'
     }
 
    void "Test format property is valid for Accept header only"() {
@@ -292,8 +299,9 @@ class RequestAndResponseMimeTypesApiSpec extends Specification{
             'got html'      | 'application/xml, text/html, */*'  | 'Mozilla'    | ''
             'got json'      | 'application/xml, */*, text/html'  | 'Mozilla'    | ''
             'got json'      | 'application/xml, text/csv, */*'   | 'Mozilla'    | ''
-            'got json'      | 'application/xml, text/html, */*'  | 'Trident'    | ''
+            'got html'      | 'application/xml, text/html, */*'  | 'Trident'    | ''
             'got html'      | 'application/xml, text/html, */*'  | 'Trident'    | 'grails.mime.disable.accept.header.userAgents = []'
+            'got json'      | 'application/xml, text/html, */*'  | 'Trident'    | 'grails.mime.disable.accept.header.userAgents = ["Trident"]'
 //            'got html'      | 'application/xml, text/html, */*'  | 'Trident'    | 'grails.mime.disable.accept.header.userAgents = null' // TODO: can no longer detect if something is set to null using new Config API, investigate..
     }
 

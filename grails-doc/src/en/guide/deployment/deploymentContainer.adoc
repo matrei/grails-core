@@ -17,134 +17,57 @@ specific language governing permissions and limitations
 under the License.
 ////
 
-Grails apps can be deployed to a Servlet Container or Application Server.
+An external servlet container manages one or more applications deployed as WAR files.
+This differs from an <<deploymentLayeredBuilds,OCI container image>>, which normally runs an executable Grails JAR with its embedded server.
 
+== Prepare a deployable WAR
 
-=== WAR file
+Ensure the application applies Gradle's `war` plugin. Add it to the existing `plugins` block, or use `apply plugin: 'war'` if the build uses imperative plugin application.
+The Grails web application plugins configure Spring Boot's packaging tasks; an additional Spring Boot plugin version is not required.
 
-
-A common approach to Grails application deployment in production is to deploy to an existing Servlet container via a WAR file. Containers allow multiple applications to be deployed on the same port with different paths.
-
-Creating a WAR file is as simple as executing the link:{commandLineRef}war.html[war] command:
-
-[source,groovy]
-----
-grails war
-----
-
-This will produce a WAR file that can be deployed to a container, in the `build/libs` directory.
-
-Note that by default Grails will include an embeddable version of Tomcat inside the WAR file so that it is runnable (see the previous section), this can cause problems if you deploy to a different version of Tomcat. If you don't intend to use the embedded container then you should either remove the Tomcat dependencies or change the scope to `testImplementation` prior to deploying to your production container in `build.gradle`:
+For a Tomcat application, keep the Tomcat starter as an application dependency and declare its runtime components using `providedRuntime` in `build.gradle`:
 
 [source,groovy]
 ----
-testImplementation "org.springframework.boot:spring-boot-starter-tomcat"
-----
-
-
-
-== Application servers
-
-The Grails framework requires that runtime containers support Servlet 6.0.0 and above. By default, Grails framework applications are bundled with an embeddable Tomcat and testing is primarily done with Tomcat.  Any servlet container meeting the minimum requirements should be able to run Grails framework applications, but some workarounds may be required for container-specific bugs or configurations.
-
-== Container Deployments with Layered Builds
-
-For optimized container deployments, Grails applications can take advantage of Spring Boot's layered JAR functionality. This approach splits the application into different layers (dependencies, snapshot dependencies, and application code), which allows for more efficient Docker image builds and better layer caching.
-
-To enable layered builds, you can configure your `build.gradle` file:
-
-[source,gradle]
-----
-springBoot {
-    layout = 'ZIP'
-}
-
-jar {
-    enabled = true
-    archiveClassifier = 'plain'
-}
-
-bootJar {
-    enabled = true
-    archiveClassifier = 'exec'
-}
-
-// Configure layered JAR for container optimization
-bootBuildImage {
-    builder = 'docker.io/paketobuildpacks/builder-jammy-base:latest'
-}
-----
-
-This configuration creates layered builds that are ideal for container deployments, as Docker can cache unchanged layers (like dependencies) and only rebuild the layers that have changed.
-
-=== Docker Build Best Practices
-
-When building Docker images for Grails applications, consider using multi-stage builds to optimize the final image size:
-
-[source,Dockerfile]
-----
-# Multi-stage build for Grails application
-FROM docker.io/library/eclipse-temurin:17-jdk-jammy AS builder
-WORKDIR /workspace/app
-
-COPY gradlew .
-COPY gradle gradle
-COPY build.gradle .
-COPY settings.gradle .
-RUN chmod +x ./gradlew
-RUN ./gradlew --version
-
-COPY src src
-RUN ./gradlew assemble -x test
-
-FROM docker.io/library/eclipse-temurin:17-jre-jammy
-VOLUME /tmp
-COPY --from=builder /workspace/app/build/libs/*.jar app.jar
-ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
-----
-
-=== Using Spring Boot's Layered JAR Feature
-
-For even more optimized Docker builds, you can create layered JARs that separate application code from dependencies:
-
-[source,gradle]
-----
-// In build.gradle, add the layered plugin
-plugins {
-    id 'org.springframework.boot' version '3.x.x' apply false
-    id 'io.spring.dependency-management' version '1.x.x'
-    id 'org.grails.grails-web' version '7.x.x'
-    id 'org.grails.plugins:hibernate5' version '7.x.x'
-}
-
-// Configure layered JAR
-jar {
-    enabled = true
-    archiveClassifier = 'plain'
-}
-
-bootJar {
-    enabled = true
-    archiveClassifier = 'exec'
-    layered {
-        enabled = true
-    }
-}
-
-// Add the Spring Boot layered plugin dependency
-configurations.all {
-    resolutionStrategy {
-        force 'org.springframework.boot:spring-boot-gradle-plugin:3.x.x'
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-tomcat'
+    providedRuntime('org.springframework.boot:spring-boot-starter-tomcat-runtime') {
+        // Grails beans also use Spring Boot's integration classes in an external container.
+        exclude group: 'org.springframework.boot'
     }
 }
 ----
 
-Then you can use the `org.springframework.boot:jarmap` tool to inspect and work with the layers:
+The `-runtime` starter is Spring Boot 4's way to identify the runtime components that must be provided by an external servlet container.
+It includes the embedded Tomcat libraries. `bootWar` packages those components in `WEB-INF/lib-provided`, outside the external servlet container's application library path, while keeping them available to executable WAR launches.
+The exclusion applies only to this provided dependency: Spring Boot's integration modules remain ordinary application dependencies through `spring-boot-starter-tomcat` and are packaged in `WEB-INF/lib`. Grails uses their types when registering application beans, and an external Tomcat installation does not supply them.
+`providedRuntime` also keeps them on the test classpath; `testImplementation` would make them unavailable when running the packaged WAR with `java -jar`.
+Review any additional servlet-container dependencies for the same packaging requirements.
+
+The Grails Gradle plugin applies the selected Grails BOM to `providedRuntime` by default, so these dependencies do not need explicit versions.
+An application that opts out of automatic BOM management must supply its chosen platform to this configuration as well as its ordinary application configurations.
+
+Grails generates servlet initialization support for the application's conventional `Application` class. Retain the generated Grails application structure rather than replacing it with a separate Spring Boot application entry point.
 
 [source,bash]
 ----
-# Extract layers for Docker multi-stage build
-java -jar build/libs/myapp-1.0.0-exec.jar extract --layers --destination build/extracted/
+./gradlew clean check bootWar
 ----
 
-This approach significantly reduces Docker image build times and image sizes by enabling layer caching for unchanged dependencies.
+Deploy the resulting executable WAR from `build/libs`, for example `myapp-0.1.war`, using the servlet container's deployment mechanism.
+Use the `bootWar` output, not a `*-plain.war`. The link:{commandLineRef}war.html[`grails war`] command is also available.
+
+== Container requirements and configuration
+
+Grails 8 requires a Jakarta Servlet 6.1-compatible container, such as Tomcat 11, and Java 21 or later.
+Older Tomcat generations, including Tomcat 10.1 (Servlet 6.0), do not meet this requirement.
+Test the packaged WAR against the actual container and Java versions used in production, including any application-server-specific classloading configuration.
+
+For external deployments:
+
+* Configure listeners, TLS certificates, connection limits, and graceful undeployment in the servlet container. Spring Boot's embedded-server settings do not configure an external server's connectors.
+* Configure the context path in the servlet container. For example, Tomcat normally derives it from the WAR name; `ROOT.war` deploys at `/`. An embedded-server `server.servlet.context-path` setting does not replace this configuration.
+* Supply <<deploymentTasks,external configuration and secrets>> through the deployment platform. JVM system properties apply to every application in a shared server JVM, so do not use them for settings that must differ between deployed applications.
+* Check startup logs, health, a representative application request, and static resources after deployment. Exercise shutdown and redeployment as part of release testing.
+
+See the link:{springBootHowTo}deployment/traditional-deployment.html[Spring Boot traditional deployment guide] for further WAR packaging and application server guidance.

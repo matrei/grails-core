@@ -38,29 +38,43 @@ apply {
 dependencies {
     gradleConf gradleApi()
 
-    // grails-docs classes are used in Gradle builds,
-    // so we must compile with Groovy 3 until Gradle upgrades to Groovy 4.
-    compileOnly "org.codehaus.groovy:groovy:${GroovySystem.version}"
-    compileOnly "org.codehaus.groovy:groovy-ant:${GroovySystem.version}"
+    // grails-docs classes are used in Gradle builds, using Gradle's embedded Groovy version
+    compileOnly "org.apache.groovy:groovy:${GroovySystem.version}"
+    compileOnly "org.apache.groovy:groovy-ant:${GroovySystem.version}"
 
     api "org.apache.commons:commons-text:${gradleBomDependencyVersions['commons-text.version']}"
     api "org.apache.ant:ant:${gradleBomDependencyVersions['ant.version']}"
     api 'org.grails:grails-gdoc-engine:1.0.1'
     api 'org.yaml:snakeyaml:2.4'
 
+    // Maven's own model library, used by ExtractDependenciesTask to parse BOM POMs the
+    // Maven-standard way instead of with hand-rolled XML parsing.
+    api "org.apache.maven:maven-model:${gradleBomDependencyVersions['maven-model.version']}"
+
     api "org.asciidoctor:asciidoctorj:${gradleBomDependencyVersions['asciidoctorj.version']}"
-    implementation "org.springframework.boot:spring-boot-gradle-plugin:${gradleBomDependencyVersions['spring-boot.version']}"
 
     testImplementation platform("org.spockframework:spock-bom:${gradleBomDependencyVersions['gradle-spock.version']}")
     testImplementation('org.spockframework:spock-core') {
         transitive = false
     }
 
-    testImplementation "org.codehaus.groovy:groovy-test-junit5:${GroovySystem.version}"
+    testImplementation "org.apache.groovy:groovy-test-junit5:${GroovySystem.version}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.12.2'
-    testImplementation 'org.junit.platform:junit-platform-runner:1.12.2'
+    testImplementation 'org.junit.platform:junit-platform-suite:1.12.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.12.2'
+
+    // Supplied by the Gradle distribution when this code runs as build logic, hence compileOnly
+    // above; tests run on a plain JVM and need them for real.
+    testRuntimeOnly "org.apache.groovy:groovy-ant:${GroovySystem.version}"
+    testRuntimeOnly "org.apache.groovy:groovy-templates:${GroovySystem.version}"
+    // PropertyNameCalculator's signatures name Gradle types, which Groovy loads when it introspects the class
+    testRuntimeOnly gradleApi()
+
+    // DocPublisher looks grails-doc-files.jar up as a resource on its own classpath. The
+    // published jar carries it inside; tests run against class directories, so they need the
+    // directory holding it instead.
+    testRuntimeOnly files(layout.buildDirectory.dir('doc-files')) { builtBy 'docFilesJar' }
 }
 
 sourceSets {
@@ -74,6 +88,9 @@ docFilesJar.configure {Jar it ->
     it.description = 'Package up files used for generating documentation.'
     it.archiveVersion = null
     it.archiveFileName = 'grails-doc-files.jar'
+    // Its own directory, so that directory can go on the test runtime classpath above
+    // without dragging build/libs along with it.
+    it.destinationDirectory = layout.buildDirectory.dir('doc-files')
     it.from 'src/main/template'
 }
 
@@ -88,11 +105,20 @@ def java17moduleReflectionCompatibilityArguments = [
         '--add-opens=java.base/java.util=ALL-UNNAMED'
 ]
 tasks.withType(Test).configureEach {
+    // Honor DO_NOT_CACHE_TESTS=1 so developers can repeatedly invoke the same test command
+    // without --rerun-tasks (and without recompiling everything else).
+    boolean doNotCacheTests = System.getenv('DO_NOT_CACHE_TESTS')?.toBoolean()
+    outputs.cacheIf { !doNotCacheTests }
+    outputs.upToDateWhen { !doNotCacheTests }
+
     onlyIf {
         ![
                 'onlyFunctionalTests',
                 'onlyHibernate5Tests',
+                'onlyHibernate7Tests',
                 'onlyMongodbTests',
+                'onlyRedisTests',
+                'onlySpringSecurityTests',
                 'skipCoreTests',
                 'skipTests'
         ].find {
@@ -102,13 +128,7 @@ tasks.withType(Test).configureEach {
 
     useJUnitPlatform()
     jvmArgs += java17moduleReflectionCompatibilityArguments
-    develocity {
-        testRetry {
-            maxRetries = 2
-            maxFailures = 20
-            failOnPassedAfterRetry = true
-        }
-    }
+
     testLogging {
         events('passed', 'skipped', 'failed')
         showExceptions = true

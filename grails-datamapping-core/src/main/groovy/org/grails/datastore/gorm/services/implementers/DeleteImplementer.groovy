@@ -33,6 +33,7 @@ import org.codehaus.groovy.ast.stmt.Statement
 import org.grails.datastore.gorm.transactions.transform.TransactionalTransform
 import org.grails.datastore.mapping.reflect.AstUtils
 
+import static org.codehaus.groovy.ast.tools.GeneralUtils.args
 import static org.codehaus.groovy.ast.tools.GeneralUtils.block
 import static org.codehaus.groovy.ast.tools.GeneralUtils.callX
 import static org.codehaus.groovy.ast.tools.GeneralUtils.constX
@@ -63,7 +64,7 @@ class DeleteImplementer extends AbstractDetachedCriteriaServiceImplementor imple
 
     @Override
     protected boolean isCompatibleReturnType(ClassNode domainClass, MethodNode methodNode, ClassNode returnType, String prefix) {
-        return ClassHelper.VOID_TYPE.equals(returnType) || AstUtils.isSubclassOfOrImplementsInterface(returnType, Number.name)
+        return ClassHelper.VOID_TYPE == returnType || AstUtils.isSubclassOfOrImplementsInterface(returnType, Number.name)
     }
 
     @Override
@@ -78,9 +79,17 @@ class DeleteImplementer extends AbstractDetachedCriteriaServiceImplementor imple
 
     @Override
     void implementById(ClassNode domainClassNode, MethodNode abstractMethodNode, MethodNode newMethodNode, ClassNode targetClassNode, BlockStatement body, Expression byIdLookup) {
-        boolean isVoidReturnType = ClassHelper.VOID_TYPE.equals(newMethodNode.returnType)
+        boolean isVoidReturnType = ClassHelper.VOID_TYPE == newMethodNode.returnType
         VariableExpression obj = varX('$obj')
-        Statement deleteStatement = stmt(callX(obj, 'delete'))
+        Expression connectionId = findConnectionId(abstractMethodNode)
+        Statement deleteStatement
+        if (connectionId != null) {
+            // Route delete through the instance API for the specified connection
+            deleteStatement = stmt(callX(buildInstanceApiLookup(domainClassNode, connectionId), 'delete', args(obj)))
+        }
+        else {
+            deleteStatement = stmt(callX(obj, 'delete'))
+        }
         if (!isVoidReturnType) {
             deleteStatement = block(
                 deleteStatement,
@@ -106,7 +115,7 @@ class DeleteImplementer extends AbstractDetachedCriteriaServiceImplementor imple
     void implementWithQuery(ClassNode domainClassNode, MethodNode abstractMethodNode, MethodNode newMethodNode, ClassNode targetClassNode, BlockStatement body, VariableExpression detachedCriteriaVar, Expression queryArgs) {
 
         MethodCallExpression deleteCall = callX(detachedCriteriaVar, 'deleteAll')
-        boolean isVoidReturnType = ClassHelper.VOID_TYPE.equals(newMethodNode.returnType)
+        boolean isVoidReturnType = ClassHelper.VOID_TYPE == newMethodNode.returnType
 
         body.addStatements([
                 // return query.deleteAll()

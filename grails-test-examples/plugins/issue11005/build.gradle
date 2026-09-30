@@ -18,7 +18,9 @@
  */
 plugins {
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
 }
 
 apply plugin: 'org.apache.grails.gradle.grails-plugin'
@@ -30,11 +32,10 @@ group = 'com.example.grails.plugins'
 dependencies {
     implementation platform(project(':grails-bom'))
 
-    if(System.getenv('SITEMESH3_TESTING_ENABLED') == 'true') {
-        implementation 'org.apache.grails:grails-sitemesh3'
-    }
-    else {
+    if (System.getenv('SITEMESH2_TESTING_ENABLED') == 'true') {
         implementation 'org.apache.grails:grails-layout'
+    } else {
+        implementation 'org.apache.grails:grails-sitemesh3'
     }
     api 'org.apache.grails:grails-dependencies-starter-web'
     api 'com.h2database:h2'
@@ -43,7 +44,6 @@ dependencies {
     testImplementation 'org.apache.grails:grails-testing-support-web'
     testImplementation 'org.apache.grails:grails-testing-support-datamapping'
 
-    console 'org.apache.grails:grails-console'
 }
 
 apply {

@@ -26,6 +26,8 @@ import java.util.Properties;
 
 import javax.sql.DataSource;
 
+import org.jspecify.annotations.NonNull;
+
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.MutablePropertyValues;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -35,7 +37,6 @@ import org.grails.datastore.mapping.core.exceptions.ConfigurationException;
 
 /**
  * NOTE: Forked from Spring Boot logic to avoid hard dependency on Boot.
- *
  * Convenience class for building a {@link DataSource} with common implementations and
  * properties. If Tomcat, HikariCP or Commons DBCP are on the classpath one of them will
  * be selected (in that order with Tomcat first). In the interest of a uniform interface,
@@ -46,12 +47,11 @@ import org.grails.datastore.mapping.core.exceptions.ConfigurationException;
  *
  * @author Dave Syer
  * @author Graeme Rocher
- *
  * @since 1.1.0
  */
 public class DataSourceBuilder {
 
-    private static final String[] DATA_SOURCE_TYPE_NAMES = new String[] {
+    private static final String[] DATA_SOURCE_TYPE_NAMES = new String[]{
         "org.apache.tomcat.jdbc.pool.DataSource",
         "com.zaxxer.hikari.HikariDataSource",
         "org.apache.commons.dbcp.BasicDataSource",
@@ -61,9 +61,9 @@ public class DataSourceBuilder {
 
     private Class<? extends DataSource> type;
 
-    private ClassLoader classLoader;
+    private final ClassLoader classLoader;
 
-    private Map<String, String> properties = new HashMap<>();
+    private final Map<String, String> properties = new HashMap<>();
     private boolean pooled = true;
     private boolean readOnly = false;
 
@@ -98,12 +98,25 @@ public class DataSourceBuilder {
     }
 
     private void bind(DataSource result) {
+        if (properties.containsKey("dbProperties") && properties.containsKey("dataSourceProperties")) {
+            throw new ConfigurationException("Cannot specify both dbProperties and dataSourceProperties");
+        }
+        if (properties.containsKey("healthCheckProperties")) {
+            coerceDbProperties("healthCheckProperties");
+        }
         if (properties.containsKey("dbProperties")) {
-            coerceDbProperties();
+            coerceDbProperties("dbProperties");
+        }
+        if (properties.containsKey("dataSourceProperties")) {
+            coerceDbProperties("dataSourceProperties");
         }
         MutablePropertyValues properties = new MutablePropertyValues(this.properties);
         new RelaxedDataBinder(result).withAlias("url", "jdbcUrl")
-                .withAlias("username", "user").bind(properties);
+                .withAlias("username", "user")
+                // The HikariConfig's property name is dataSourceProperties, not dbProperties so support both or either way being defined in config
+                .withAlias("dbProperties", "dataSourceProperties")
+                .withAlias("dataSourceProperties", "dbProperties")
+                .bind(properties);
     }
 
     public DataSourceBuilder properties(Map<String, String> properties) {
@@ -111,19 +124,38 @@ public class DataSourceBuilder {
         return this;
     }
 
-    private void coerceDbProperties() {
-        Map propertiesMap = this.properties;
-        Object dbPropertiesObject = propertiesMap.get("dbProperties");
-        if (dbPropertiesObject instanceof Map) {
-            Map dbProperties = (Map) dbPropertiesObject;
+    /**
+     * Coerces the dbProperties value into a flat {@link Properties} object suitable for
+     * passing to the underlying DataSource (e.g. HikariCP's dataSourceProperties).
+     *
+     * <p>When dbProperties originate from a Groovy ConfigSlurper DSL, dotted keys like
+     * {@code "oracle.jdbc.sendBooleanAsNativeBoolean"} are expanded into nested maps:
+     * {@code {oracle: {jdbc: {sendBooleanAsNativeBoolean: false}}}}. This method
+     * recursively flattens such nested maps back into dotted string keys.</p>
+     *
+     * <p>When dbProperties originate from YAML configuration, the keys are already flat
+     * strings and are simply converted to a Properties object.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private void coerceDbProperties(String keyname) {
+        Map<String, Object> propertiesMap = (Map<String, Object>) (Map<?, ?>) this.properties;
+        Object dbPropertiesObject = propertiesMap.get(keyname);
+        if (dbPropertiesObject instanceof Map<?, ?> dbProperties) {
             Properties properties = new Properties();
-            for (Object key : dbProperties.keySet()) {
-                Object value = dbProperties.get(key);
-                if (value != null) {
-                    properties.put(key.toString(), value.toString());
-                }
+            flattenMap("", dbProperties, properties);
+            propertiesMap.put(keyname, properties);
+        }
+    }
+
+    private void flattenMap(String prefix, Map<?, ?> map, Properties target) {
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            String key = prefix.isEmpty() ? entry.getKey().toString() : prefix + "." + entry.getKey().toString();
+            Object value = entry.getValue();
+            if (value instanceof Map<?, ?> nestedMap) {
+                flattenMap(key, nestedMap, target);
+            } else if (value != null) {
+                target.put(key, value.toString());
             }
-            propertiesMap.put("dbProperties", properties);
         }
     }
 
@@ -157,12 +189,10 @@ public class DataSourceBuilder {
 
         if (this.type != null) {
             return this.type;
-        }
-        else if (!pooled) {
+        } else if (!pooled) {
             if (this.readOnly) {
                 return ReadOnlyDriverManagerDataSource.class;
-            }
-            else {
+            } else {
                 return org.springframework.jdbc.datasource.DriverManagerDataSource.class;
             }
         }
@@ -171,8 +201,7 @@ public class DataSourceBuilder {
             try {
                 return (Class<? extends DataSource>) ClassUtils.forName(name,
                         this.classLoader);
-            }
-            catch (Exception ex) {
+            } catch (Exception ex) {
                 // Swallow and continue
             }
         }
@@ -198,7 +227,7 @@ public class DataSourceBuilder {
     protected static class ReadOnlyDriverManagerDataSource extends DriverManagerDataSource {
 
         @Override
-        protected Connection getConnectionFromDriverManager(final String url, final Properties props) throws SQLException {
+        protected @NonNull Connection getConnectionFromDriverManager(@NonNull final String url, @NonNull final Properties props) throws SQLException {
             Connection connection = super.getConnectionFromDriverManager(url, props);
             connection.setReadOnly(true);
             return connection;

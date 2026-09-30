@@ -41,7 +41,9 @@ extractTck.configure { Sync it ->
     it.finalizedBy(tasks.named('test', Test))
 
     it.from { zipTree(configurations.tck.singleFile) }
-    it.into(layout.buildDirectory.dir('extracted-tck-classes'))
+    it.into(layout.buildDirectory.dir('extracted-tck-classes')).exclude {
+        it.path == 'META-INF/sbom.json'
+    }
 }
 
 // There is a known issue with IntelliJ that can cause it's inspection process to lock up.
@@ -57,8 +59,22 @@ cleanupTask.configure { Task it ->
 
 tasks.withType(Test).configureEach { Test it ->
     it.dependsOn(extractTck)
+
+    // Honor DO_NOT_CACHE_TESTS=1 so developers can repeatedly invoke the same test command
+    // without --rerun-tasks (and without recompiling everything else).
+    it.outputs.cacheIf { !doNotCacheTests }
+    it.outputs.upToDateWhen { !doNotCacheTests }
+
     it.onlyIf {
         if (project.hasProperty('onlyFunctionalTests')) {
+            return false
+        }
+
+        if (project.hasProperty('skipHibernate7Tests') && project.name.startsWith('grails-data-hibernate7')) {
+            return false
+        }
+
+        if (project.hasProperty('onlyHibernate7Tests') && !project.name.startsWith('grails-data-hibernate7')) {
             return false
         }
 
@@ -75,6 +91,22 @@ tasks.withType(Test).configureEach { Test it ->
         }
 
         if (project.hasProperty('onlyMongodbTests') && !project.name.startsWith('grails-data-mongo')) {
+            return false
+        }
+
+        if (project.hasProperty('onlySpringSecurityTests')) {
+            return false
+        }
+
+        if (project.hasProperty('onlyRedisTests')) {
+            return false
+        }
+
+        if (project.hasProperty('skipNeo4jTests') && project.name.startsWith('grails-data-neo4j')) {
+            return false
+        }
+
+        if (project.hasProperty('onlyNeo4jTests') && !project.name.startsWith('grails-data-neo4j')) {
             return false
         }
 

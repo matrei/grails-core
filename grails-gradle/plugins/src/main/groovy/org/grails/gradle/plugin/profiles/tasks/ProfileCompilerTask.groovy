@@ -67,7 +67,7 @@ import org.grails.gradle.plugin.profiles.GrailsProfileGradlePlugin
  */
 @CompileStatic
 @CacheableTask
-class ProfileCompilerTask extends AbstractCompile {
+abstract class ProfileCompilerTask extends AbstractCompile {
 
     public static final String DEFAULT_COMPATIBILITY = JavaVersion.VERSION_17.majorVersion
     public static final String PROFILE_NAME = 'name'
@@ -206,7 +206,9 @@ class ProfileCompilerTask extends AbstractCompile {
             f.name.endsWith('.yml')
         } ?: []) as List<File>
 
-        Map<String, String> commandNames = [:]
+        // Use a sorted map so the generated commands ordering is deterministic
+        // (the file tree iteration order is filesystem-dependent) and the build is reproducible
+        Map<String, String> commandNames = new TreeMap<>()
         for (File f in groovySourceFiles) {
             def fn = f.name
             commandNames.put(fn - '.groovy', fn)

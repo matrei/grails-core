@@ -29,14 +29,37 @@ def java17moduleReflectionCompatibilityArguments = [
 dependencies {
     // https://docs.gradle.org/8.3/userguide/upgrading_version_8.html#test_framework_implementation_dependencies
     add('testRuntimeOnly', 'org.junit.platform:junit-platform-launcher')
+    add('testRuntimeOnly', 'net.bytebuddy:byte-buddy')
+    add('testRuntimeOnly', 'org.objenesis:objenesis')
+}
+
+// Disable build cache for Groovy compilation in CI to ensure AST transformations are always applied.
+// AST transformers are applied at compile time, and Gradle's incremental compilation might not detect
+// when a transformer itself changes, leading to stale bytecode.
+// This applies to:
+// - compileGroovy
+// - compileTestGroovy
+// - compileGroovyPlugins (if present)
+tasks.withType(GroovyCompile).configureEach {
+    outputs.cacheIf { !isCiBuild }
 }
 
 tasks.withType(Test).configureEach {
+    // Disable build cache for tests in CI to ensure they always run.
+    // Also honor DO_NOT_CACHE_TESTS=1 so developers can repeatedly invoke the same test
+    // command without --rerun-tasks (and without recompiling everything else).
+    outputs.cacheIf { !isCiBuild && !doNotCacheTests }
+    outputs.upToDateWhen { !doNotCacheTests }
+
     onlyIf {
         ![
                 'onlyFunctionalTests',
                 'onlyHibernate5Tests',
+                'onlyHibernate7Tests',
                 'onlyMongodbTests',
+                'onlyNeo4jTests',
+                'onlyRedisTests',
+                'onlySpringSecurityTests',
                 'skipCoreTests',
                 'skipTests'
         ].find {
@@ -46,13 +69,13 @@ tasks.withType(Test).configureEach {
 
     useJUnitPlatform()
     jvmArgs += java17moduleReflectionCompatibilityArguments
-    develocity {
-        testRetry {
-            maxRetries = configuredTestParallel == 1 ? 1 : 2
-            maxFailures = 20
-            failOnPassedAfterRetry = true
-        }
-    }
+//    develocity {
+//        testRetry {
+//            maxRetries = configuredTestParallel == 1 ? 1 : 2
+//            maxFailures = 20
+//            failOnPassedAfterRetry = true
+//        }
+//    }
     testLogging {
         events('passed', 'skipped', 'failed')
         showExceptions = true
@@ -61,15 +84,24 @@ tasks.withType(Test).configureEach {
         showStackTraces = true
     }
     excludes = ['**/*TestCase.class', '**/*$*.class']
-    maxParallelForks = configuredTestParallel
-    maxHeapSize = isCiBuild ? '768m' : '1024m'
-    forkEvery = hasProperty('forkEveryUnitTest') ? getProperty('forkEveryUnitTest') as long : (isCiBuild ? 20 : 100)
+    maxParallelForks = rootProject.ext.configuredTestParallel
+    maxHeapSize = "${rootProject.ext.testForkHeapMb}m"
+    forkEvery = hasProperty('forkEveryUnitTest') ? getProperty('forkEveryUnitTest') as long : (isCiBuild ? 50 : 100)
     if (System.getProperty('debug.tests')) {
         jvmArgs += debugArguments
     }
-    afterSuite {
-        System.out.print('.')
-        System.out.flush()
+    addTestListener([
+        afterSuite: { desc, result ->
+            System.out.print('.')
+            System.out.flush()
+        }
+    ] as TestListener)
+    // Bridge Geb-specific properties (e.g. from local.properties) to the Test JVM
+    // to allow local overrides of Docker images and other settings.
+    project.properties.each { key, value ->
+        if (key.toString().startsWith('grails.geb.')) {
+            systemProperty key, value
+        }
     }
 }
 
@@ -90,15 +122,19 @@ if (hasProperty('testBisect')) {
             }
         }
 
-        beforeTest { testDescriptor ->
-            logger.info('STARTED TEST: {} > {}', testDescriptor.className, testDescriptor.name)
-        }
-
-        afterSuite { desc, result ->
-            if (!desc.parent) {
-                def testStatus = result.failedTestCount == 0 && result.testCount > 1 ? 'PASSED' : 'FAILED'
-                logger.info('FINISHED - {} - {} tests executed, {} failed', testStatus, result.testCount, result.failedTestCount)
-            }
-        }
+        addTestListener([
+                beforeTest: { testDescriptor ->
+                    logger.info('STARTED TEST: {} > {}', testDescriptor.className, testDescriptor.name)
+                },
+                afterSuite: { suite, result ->
+                    if (!suite.parent) {
+                        def testStatus = result.failedTestCount == 0 && result.testCount > 1 ? 'PASSED' : 'FAILED'
+                        logger.info(
+                                'FINISHED - {} - {} tests executed, {} failed',
+                                testStatus, result.testCount, result.failedTestCount
+                        )
+                    }
+                }
+        ] as TestListener)
     }
 }

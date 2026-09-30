@@ -19,7 +19,9 @@
 package org.grails.forge.feature.spring;
 
 import io.micronaut.core.annotation.NonNull;
+
 import jakarta.inject.Singleton;
+
 import org.grails.forge.application.ApplicationType;
 import org.grails.forge.application.generator.GeneratorContext;
 import org.grails.forge.build.dependencies.Dependency;
@@ -40,7 +42,7 @@ public class SpringBootUndertowFeature extends SpringBootEmbeddedServlet {
     @NonNull
     @Override
     public String getName() {
-        return "spring-boot-starter-undertow";
+        return "grails-undertow";
     }
 
     @Override
@@ -50,10 +52,13 @@ public class SpringBootUndertowFeature extends SpringBootEmbeddedServlet {
 
     @Override
     public void apply(GeneratorContext generatorContext) {
+        // Spring Boot 4 no longer ships spring-boot-starter-undertow; Undertow
+        // support is provided by the Grails Undertow plugin, which bundles the
+        // vendored Spring Boot Undertow autoconfiguration (grails-undertow-spring-boot)
         generatorContext.addDependency(Dependency.builder()
-                .groupId("org.springframework.boot")
-                .artifactId("spring-boot-starter-undertow")
-                .implementation());
+            .groupId("org.apache.grails")
+            .artifactId("grails-undertow")
+            .implementation());
     }
 
     @Override

@@ -27,11 +27,19 @@ def java17moduleReflectionCompatibilityArguments = [
 ]
 
 tasks.withType(Test).configureEach {
+    // Honor DO_NOT_CACHE_TESTS=1 so developers can repeatedly invoke the same test command
+    // without --rerun-tasks (and without recompiling everything else).
+    outputs.cacheIf { !doNotCacheTests }
+    outputs.upToDateWhen { !doNotCacheTests }
+
     onlyIf {
         ![
                 'onlyFunctionalTests',
                 'onlyHibernate5Tests',
+                'onlyHibernate7Tests',
                 'onlyMongodbTests',
+                'onlyRedisTests',
+                'onlySpringSecurityTests',
                 'skipCoreTests',
                 'skipTests'
         ].find {
@@ -40,14 +48,9 @@ tasks.withType(Test).configureEach {
     }
 
     useJUnitPlatform()
+    systemProperty 'projectVersion', projectVersion
+    systemProperty 'currentJdk', JavaVersion.current().majorVersion
     jvmArgs += java17moduleReflectionCompatibilityArguments
-    develocity {
-        testRetry {
-            maxRetries = 2
-            maxFailures = 20
-            failOnPassedAfterRetry = true
-        }
-    }
     testLogging {
         events('passed', 'skipped', 'failed')
         showExceptions = true
@@ -56,7 +59,7 @@ tasks.withType(Test).configureEach {
         showStackTraces = true
     }
     excludes = ['**/*TestCase.class', '**/*$*.class']
-    maxParallelForks = configuredTestParallel
+    maxParallelForks = rootProject.ext.configuredTestParallel
     maxHeapSize = isCiBuild ? '768m' : '1024m'
     if (System.getProperty('debug.tests')) {
         jvmArgs += debugArguments

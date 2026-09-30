@@ -19,6 +19,7 @@
 package org.grails.web.errors;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -33,11 +34,14 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
 import org.springframework.web.context.ServletContextAware;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.View;
 import org.springframework.web.servlet.ViewResolver;
@@ -52,12 +56,14 @@ import grails.web.mapping.UrlMappingInfo;
 import grails.web.mapping.UrlMappingsHolder;
 import grails.web.mapping.exceptions.UrlMappingException;
 import grails.web.mvc.GrailsResponseMutator;
+import org.apache.grails.core.GrailsBootstrapRegistryInitializer;
 import org.grails.core.exceptions.GrailsRuntimeException;
 import org.grails.exceptions.ExceptionUtils;
 import org.grails.exceptions.reporting.DefaultStackTraceFilterer;
 import org.grails.exceptions.reporting.StackTraceFilterer;
 import org.grails.web.mapping.DefaultUrlMappingInfo;
 import org.grails.web.mapping.UrlMappingUtils;
+import org.grails.web.servlet.mvc.GrailsWebRequest;
 import org.grails.web.servlet.mvc.exceptions.GrailsMVCException;
 import org.grails.web.util.GrailsApplicationAttributes;
 import org.grails.web.util.WebUtils;
@@ -71,12 +77,21 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
 
     public static final String EXCEPTION_ATTRIBUTE = WebUtils.EXCEPTION_ATTRIBUTE;
 
-    protected static final Log LOG = LogFactory.getLog(GrailsExceptionResolver.class);
+    /** Marks a request that is currently inside a forward to a status-code controller mapping. */
+    private static final String ERROR_HANDLER_FORWARD_IN_PROGRESS_ATTRIBUTE =
+            "org.grails.web.errors.ERROR_HANDLER_FORWARD_IN_PROGRESS";
+
+    protected static final Logger LOG = LoggerFactory.getLogger(GrailsExceptionResolver.class);
     protected static final String LINE_SEPARATOR = System.getProperty("line.separator");
 
     protected ServletContext servletContext;
     protected GrailsApplication grailsApplication;
     protected StackTraceFilterer stackFilterer;
+    protected AuditorAwareLookup auditorAwareLookup;
+    private volatile boolean logFlagsResolved;
+    private boolean logFullStackTrace;
+    private boolean logAuditor;
+    private boolean logRemoteAddr;
 
     /* (non-Javadoc)
      * @see org.springframework.web.servlet.handler.SimpleMappingExceptionResolver#resolveException(jakarta.servlet.http.HttpServletRequest, jakarta.servlet.http.HttpServletResponse, java.lang.Object, java.lang.Exception)
@@ -89,13 +104,21 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
 
         ex = findWrappedException(ex);
 
-        filterStackTrace(ex);
+        if (!(ex instanceof AsyncRequestTimeoutException)) {
+            logFullStackTraceIfEnabled(ex);
+            filterStackTrace(ex);
+        }
 
         ModelAndView mv = super.resolveException(request, response, handler, ex);
 
         setStatus(request, response, mv, ex);
 
-        logStackTrace(ex, request);
+        if (ex instanceof AsyncRequestTimeoutException) {
+            LOG.debug("Async request timed out: {}", request.getRequestURI());
+        }
+        else {
+            logStackTrace(ex, request);
+        }
 
         UrlMappingsHolder urlMappings = lookupUrlMappings();
         if (urlMappings != null) {
@@ -123,6 +146,7 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
     public void setGrailsApplication(GrailsApplication grailsApplication) {
         this.grailsApplication = grailsApplication;
         createStackFilterer();
+        this.auditorAwareLookup = new AuditorAwareLookup(grailsApplication.getMainContext());
     }
 
     /**
@@ -147,9 +171,9 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
     }
 
     protected void setStatus(HttpServletRequest request, HttpServletResponse response, ModelAndView mv, Exception e) {
-        response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        // expose the servlet 2.3 specs status code request attribute as 500
-        request.setAttribute(WebUtils.ERROR_STATUS_CODE_ATTRIBUTE, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        int status = exceptionStatus(e);
+        response.setStatus(status);
+        request.setAttribute(WebUtils.ERROR_STATUS_CODE_ATTRIBUTE, status);
         final GrailsWrappedRuntimeException gwre = new GrailsWrappedRuntimeException(servletContext, e);
         mv.addObject(WebUtils.ERROR_EXCEPTION_ATTRIBUTE, gwre);
         mv.addObject(WebUtils.EXCEPTION_ATTRIBUTE, gwre);
@@ -181,31 +205,59 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
     protected ModelAndView resolveViewOrForward(Exception ex, UrlMappingsHolder urlMappings, HttpServletRequest request,
             HttpServletResponse response, ModelAndView mv) {
 
-        UrlMappingInfo info = matchStatusCode(ex, urlMappings);
-
-        if (info != null) {
-            Map params = extractRequestParamsWithUrlMappingHolder(urlMappings, request);
-            if (params != null && !params.isEmpty()) {
-                Map infoParams = info.getParameters();
-                if (infoParams != null) {
-                    params.putAll(info.getParameters());
+        UrlMappingInfo info;
+        boolean mapsToView;
+        boolean mapsToController;
+        try {
+            info = matchStatusCode(ex, urlMappings);
+            if (info != null) {
+                Map params = extractRequestParamsWithUrlMappingHolder(urlMappings, request);
+                if (params != null && !params.isEmpty()) {
+                    Map infoParams = info.getParameters();
+                    if (infoParams != null) {
+                        params.putAll(info.getParameters());
+                    }
+                    info = new DefaultUrlMappingInfo(info, params, grailsApplication);
                 }
-                info = new DefaultUrlMappingInfo(info, params, grailsApplication);
             }
+            mapsToView = info != null && info.getViewName() != null;
+            mapsToController = !mapsToView && info != null && info.getControllerName() != null;
+        }
+        catch (RuntimeException e) {
+            // An error handler that cannot be resolved for this request - a mapping that computes its controller
+            // from request state Grails did not set up, for example - must not replace the exception being
+            // resolved, so the default error view renders that exception instead
+            LOG.error("Unable to resolve the error handler mapped for [{}]: {}", request.getRequestURI(), e.getMessage(), e);
+            return mv;
         }
 
         try {
-            if (info != null && info.getViewName() != null) {
+            if (mapsToView) {
                 resolveView(request, info, mv);
             }
-            else if (info != null && info.getControllerName() != null) {
+            else if (mapsToController) {
+                if (isErrorHandlerForwardInProgress(request)) {
+                    LOG.error("The error handler for this request failed as well; not forwarding to it again");
+                    return mv;
+                }
                 String uri = determineUri(request);
+                if (GrailsWebRequest.lookup(request) == null) {
+                    LOG.warn("Not forwarding [{}] to the error handler it maps to, because the request has no " +
+                            "GrailsWebRequest to dispatch it with; rendering the default error view instead", uri);
+                    return mv;
+                }
                 if (!response.isCommitted()) {
                     if (response instanceof GrailsResponseMutator) {
                         // prevent further mutation of the request since an error page needs rendered instead
                         ((GrailsResponseMutator) response).deactivateResponseMutator();
                     }
-                    forwardRequest(info, request, response, mv, uri);
+                    request.setAttribute(ERROR_HANDLER_FORWARD_IN_PROGRESS_ATTRIBUTE, Boolean.TRUE);
+                    try {
+                        forwardRequest(info, request, response, mv, uri);
+                    }
+                    finally {
+                        request.removeAttribute(ERROR_HANDLER_FORWARD_IN_PROGRESS_ATTRIBUTE);
+                    }
                     // return an empty ModelAndView since the error handler has been processed
                     return new ModelAndView();
                 }
@@ -213,20 +265,38 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
             return mv;
         }
         catch (Exception e) {
-            LOG.error("Unable to render errors view: " + e.getMessage(), e);
+            LOG.error("Unable to render errors view: {}", e.getMessage(), e);
             throw new GrailsRuntimeException(e);
         }
     }
 
+    /**
+     * Whether a forward to a status-code controller mapping is already running for this request.
+     * <p>
+     * The forward re-enters the {@code DispatcherServlet} and resolves the same status-code mapping again,
+     * since {@link WebUtils#ERROR_STATUS_CODE_ATTRIBUTE} is set. An error handler failing for a reason that
+     * belongs to the request rather than the moment - an unparseable multipart body, a missing collaborator
+     * - therefore fails again inside that forward and resolves back into this method, recursing until
+     * {@code StackOverflowError}.
+     * <p>
+     * So the handler is not forwarded to from inside itself; the exception goes back to the
+     * {@code DispatcherServlet}, which reports it once through the container. The flag is cleared when the
+     * forward returns, leaving a later error on the same request free to use the handler again.
+     *
+     * @param request The request
+     * @return True when this request is inside an error handler forward
+     */
+    protected boolean isErrorHandlerForwardInProgress(HttpServletRequest request) {
+        return request.getAttribute(ERROR_HANDLER_FORWARD_IN_PROGRESS_ATTRIBUTE) != null;
+    }
+
     protected void forwardRequest(UrlMappingInfo info, HttpServletRequest request, HttpServletResponse response,
             ModelAndView mv, String uri) throws ServletException, IOException {
-        info.configure(WebUtils.retrieveGrailsWebRequest());
+        info.configure(GrailsWebRequest.lookup(request));
         String forwardUrl = UrlMappingUtils.forwardRequestForUrlMappingInfo(
                 request, response, info, mv.getModel(), true);
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Matched URI [" + uri + "] to URL mapping [" + info +
-                    "], forwarding to [" + forwardUrl + "] with response [" + response.getClass() + "]");
-        }
+        LOG.debug("Matched URI [{}] to URL mapping [{}], forwarding to [{}] with response [{}]",
+                uri, info, forwardUrl, response.getClass());
     }
 
     protected String determineUri(HttpServletRequest request) {
@@ -246,19 +316,115 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
     }
 
     protected UrlMappingInfo matchStatusCode(Exception ex, UrlMappingsHolder urlMappings) {
-        UrlMappingInfo info = urlMappings.matchStatusCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, ex);
+        int status = exceptionStatus(ex);
+        UrlMappingInfo info = urlMappings.matchStatusCode(status, ex);
         if (info == null) {
-            info = urlMappings.matchStatusCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+            info = urlMappings.matchStatusCode(status,
                     getRootCause(ex));
         }
         if (info == null) {
-            info = urlMappings.matchStatusCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            info = urlMappings.matchStatusCode(status);
         }
         return info;
     }
 
+    private static int exceptionStatus(Exception ex) {
+        if (ex instanceof AsyncRequestTimeoutException timeout) {
+            return timeout.getStatusCode().value();
+        }
+        return HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+    }
+
     protected void logStackTrace(Exception e, HttpServletRequest request) {
         LOG.error(getRequestLogMessage(e, request), e);
+    }
+
+    /**
+     * When the {@code grails.exceptionresolver.logFullStackTrace} property is enabled,
+     * emits the unfiltered stack trace to the dedicated {@code StackTrace} logger.
+     * Must be invoked <em>before</em> {@link #filterStackTrace(Exception)} — once the
+     * filterer calls {@code setStackTrace(clean)}, the original frames are gone and
+     * this method can only log the already-trimmed trace.
+     */
+    protected void logFullStackTraceIfEnabled(Exception e) {
+        if (shouldLogFullStackTrace()) {
+            DefaultStackTraceFilterer.STACK_LOG.error(StackTraceFilterer.FULL_STACK_TRACE_MESSAGE, e);
+        }
+    }
+
+    protected boolean shouldLogFullStackTrace() {
+        resolveLogFlags();
+        return logFullStackTrace;
+    }
+
+    protected boolean shouldLogAuditor() {
+        resolveLogFlags();
+        return logAuditor;
+    }
+
+    protected boolean shouldLogRemoteAddr() {
+        resolveLogFlags();
+        return logRemoteAddr;
+    }
+
+    /**
+     * Resolves the three {@code shouldLog*} flags from the application config once, on first use.
+     * Config values do not change at runtime, so each {@link Config#getProperty} lookup is paid once
+     * rather than per resolved exception. Subclasses that override the {@code shouldLog*} predicates
+     * never reach this method.
+     */
+    private void resolveLogFlags() {
+        if (logFlagsResolved) {
+            return;
+        }
+        synchronized (this) {
+            if (logFlagsResolved) {
+                return;
+            }
+            Config config = grailsApplication != null ? grailsApplication.getConfig() : null;
+            if (config != null) {
+                logFullStackTrace = config.getProperty(Settings.SETTING_LOG_FULL_STACKTRACE, Boolean.class, false);
+                logAuditor = config.getProperty(Settings.SETTING_LOG_AUDITOR, Boolean.class, false);
+                logRemoteAddr = config.getProperty(Settings.SETTING_LOG_REMOTE_ADDR, Boolean.class, false);
+            }
+            logFlagsResolved = true;
+        }
+    }
+
+    /**
+     * Resolves the client address to include in the exception log headline. The default
+     * returns {@link HttpServletRequest#getRemoteAddr()} — the container's view of the
+     * TCP peer, which reflects forwarded-header handling only when the servlet container
+     * is configured to trust a proxy chain (for example Spring Boot's
+     * {@code server.forward-headers-strategy}). Subclasses can override this to apply a
+     * different resolution strategy; the returned value (null or empty to omit) is
+     * appended verbatim as {@code ip: <value>}.
+     */
+    protected String resolveRemoteAddr(HttpServletRequest request) {
+        return request.getRemoteAddr();
+    }
+
+    /**
+     * Appends optional per-request context (remote address, current auditor) to the log
+     * headline as a single parenthesised clause — e.g. {@code (ip: 1.2.3.4, user: alice)}.
+     * Emits nothing when no tokens apply, so the baseline headline format is unchanged.
+     */
+    protected void appendRequestContext(StringBuilder sb, HttpServletRequest request) {
+        List<String> tokens = new ArrayList<>(2);
+        if (shouldLogRemoteAddr()) {
+            String remoteAddr = resolveRemoteAddr(request);
+            if (remoteAddr != null && !remoteAddr.isEmpty()) {
+                tokens.add("ip: " + remoteAddr);
+            }
+        }
+        if (shouldLogAuditor() && auditorAwareLookup != null) {
+            auditorAwareLookup.getCurrentAuditor().ifPresent(auditor ->
+                tokens.add("user: " + auditor)
+            );
+        }
+        if (!tokens.isEmpty()) {
+            sb.append(" (").append(String.join(", ", tokens)).append(")");
+        }
     }
 
     protected Exception findWrappedException(Exception e) {
@@ -284,11 +450,15 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
             sb.append(request.getRequestURI());
         }
 
+        appendRequestContext(sb, request);
+
         Config config = grailsApplication != null ? grailsApplication.getConfig() : null;
         final boolean shouldLogRequestParameters = config != null ? config.getProperty(Settings.SETTING_LOG_REQUEST_PARAMETERS, Boolean.class, Environment.getCurrent() == Environment.DEVELOPMENT) : false;
 
         if (shouldLogRequestParameters) {
-            Enumeration<String> params = request.getParameterNames();
+            // The exception being logged may be the container refusing to parse a multipart body, in which
+            // case every parameter read on this request fails too - see WebUtils.readParameterNames.
+            Enumeration<String> params = WebUtils.readParameterNames(request);
 
             if (params.hasMoreElements()) {
                 String param;
@@ -310,7 +480,7 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
                         for (i = 0; i < values.length; i++) {
                             sb.append(LINE_SEPARATOR).append(param).append(": ");
 
-                            if (blackList.contains(param)) {
+                            if (isExcludedRequestParameter(param, blackList)) {
                                 sb.append("***");
                             } else {
                                 sb.append(values[i]);
@@ -330,7 +500,24 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
         return sb.toString();
     }
 
+    protected boolean isExcludedRequestParameter(String parameterName, List<String> excludedParameterNames) {
+        if (parameterName == null || excludedParameterNames == null) {
+            return false;
+        }
+        for (String excludedParameterName : excludedParameterNames) {
+            if (excludedParameterName != null && parameterName.equalsIgnoreCase(excludedParameterName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected void createStackFilterer() {
+        StackTraceFilterer promoted = resolvePromotedStackTraceFilterer();
+        if (promoted != null) {
+            stackFilterer = promoted;
+            return;
+        }
         try {
             Class filtererClass = grailsApplication.getConfig().getProperty(Settings.SETTING_LOGGING_STACKTRACE_FILTER_CLASS, Class.class, DefaultStackTraceFilterer.class);
             stackFilterer = BeanUtils.instantiateClass(filtererClass, StackTraceFilterer.class);
@@ -338,6 +525,54 @@ public class GrailsExceptionResolver extends SimpleMappingExceptionResolver impl
         catch (Throwable t) {
             logger.error("Problem instantiating StackTracePrinter class, using default: " + t.getMessage());
             stackFilterer = new DefaultStackTraceFilterer();
+        }
+        applyLogFullStackTraceOnFilter();
+    }
+
+    /**
+     * Looks up the {@link StackTraceFilterer} that
+     * {@link GrailsBootstrapRegistryInitializer} promoted to the {@code ApplicationContext} during
+     * bootstrap, so this resolver reuses that instance instead of instantiating a second copy from
+     * config. Returns {@code null} when the bean cannot be obtained — no such bean (e.g. a
+     * {@code GrailsApplication} wired up outside the normal Spring Boot bootstrap sequence), or a
+     * bean of an incompatible type registered under the same name — in which case
+     * {@link #createStackFilterer()} falls back to its own construction. A filterer
+     * misconfiguration must never fail the context, so no {@code BeansException} escapes here.
+     *
+     * <p>Note that an application registering its own bean definition named
+     * {@link GrailsBootstrapRegistryInitializer#STACK_TRACE_FILTERER_BEAN_NAME} replaces the
+     * promoted singleton: this resolver then uses the application's bean, while the static filterer
+     * already installed in {@code GrailsUtil} at bootstrap remains the config-resolved one. Replace
+     * the bean only when that split is intended; otherwise configure
+     * {@code grails.logging.stackTraceFiltererClass} so both consume the same instance.
+     */
+    protected StackTraceFilterer resolvePromotedStackTraceFilterer() {
+        ApplicationContext context = grailsApplication.getMainContext();
+        if (context == null) {
+            return null;
+        }
+        try {
+            return context.getBean(GrailsBootstrapRegistryInitializer.STACK_TRACE_FILTERER_BEAN_NAME,
+                    StackTraceFilterer.class);
+        }
+        catch (BeansException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Propagates {@code grails.exceptionresolver.logFullStackTraceOnFilter} to the
+     * filterer instance when it is a {@link DefaultStackTraceFilterer} (or subclass
+     * thereof). Custom {@link StackTraceFilterer} implementations that do not extend
+     * the default are responsible for their own logging policy.
+     */
+    protected void applyLogFullStackTraceOnFilter() {
+        if (stackFilterer instanceof DefaultStackTraceFilterer) {
+            Config config = grailsApplication != null ? grailsApplication.getConfig() : null;
+            boolean logOnFilter = config == null ?
+                true :
+                config.getProperty(Settings.SETTING_LOG_FULL_STACKTRACE_ON_FILTER, Boolean.class, true);
+            ((DefaultStackTraceFilterer) stackFilterer).setLogFullStackTraceOnFilter(logOnFilter);
         }
     }
 }

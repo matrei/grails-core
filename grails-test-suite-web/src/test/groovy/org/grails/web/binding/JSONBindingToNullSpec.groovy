@@ -18,16 +18,33 @@
  */
 package org.grails.web.binding
 
+import groovy.json.JsonBuilder
+
 import grails.artefact.Artefact
 import grails.converters.JSON
 import grails.converters.XML
 import grails.persistence.Entity
 import grails.testing.gorm.DomainUnitTest
 import grails.testing.web.controllers.ControllerUnitTest
-import grails.web.JSONBuilder
+import org.grails.web.mime.HttpServletResponseExtension
 import spock.lang.Specification
 
 class JSONBindingToNullTests extends Specification implements ControllerUnitTest<UserController>, DomainUnitTest<User> {
+
+    def setup() {
+        // Access config to ensure grailsApplication is initialized and Holders is populated.
+        // This triggers doWithConfig() which registers the custom MIME types.
+        assert config != null
+        
+        // Clear the static mimeTypes cache to prevent test environment pollution.
+        // This must be done AFTER accessing config to ensure the new config is applied.
+        HttpServletResponseExtension.@mimeTypes = null
+    }
+
+    def cleanup() {
+        // Clear the static mimeTypes cache after each test for test isolation
+        HttpServletResponseExtension.@mimeTypes = null
+    }
 
     Closure doWithConfig() {{ config ->
         config['grails.mime.types'] = [ html: ['text/html','application/xhtml+xml'],
@@ -51,9 +68,9 @@ class JSONBindingToNullTests extends Specification implements ControllerUnitTest
         when:
         def pebbles = new User(username:"pebbles", password:"letmein", firstName:"Pebbles", lastName:"Flintstone", middleName:"T", phone:"555-555-5555", email:'pebbles@flintstone.com', activationDate:new Date(), logonFailureCount:0, deactivationDate:null).save(flush:true)
 
-        def builder = new JSONBuilder()
+        def builder = new JsonBuilder()
         request.method = 'PUT'
-        request.json = builder.build { user = pebbles }
+        request.json = builder.build { user pebbles }
         response.format = "json"
         params.id = pebbles.id
 

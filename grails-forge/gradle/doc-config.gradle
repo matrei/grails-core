@@ -17,46 +17,26 @@
  *  under the License.
  */
 
-configurations.register('documentation') {
-    canBeConsumed = false
-    canBeResolved = true
-    attributes {
-        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
-        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
-        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
-    }
+apply plugin: 'org.apache.grails.buildsrc.groovydoc'
+
+groovydocEnhancer {
+    javaVersionEnabled = false
 }
 
 dependencies {
-    documentation "org.codehaus.groovy:groovy-templates:$groovyVersion"
-    documentation "org.codehaus.groovy:groovy-dateutil:$groovyVersion"
+    // The `documentation` configuration is registered by the buildsrc.groovydoc
+    // plugin and is independent of compileClasspath/testRuntimeClasspath, so the
+    // micronaut-platform BOM we apply elsewhere does not reach it. Apply it here so
+    // the unversioned groovy-* artifacts below resolve through groovy-bom.
+    documentation platform("io.micronaut.platform:micronaut-platform:$micronautVersion")
+    documentation 'org.apache.groovy:groovy-templates'
+    documentation 'org.apache.groovy:groovy-dateutil'
+    documentation 'org.apache.groovy:groovy-ant'
+    documentation 'org.apache.groovy:groovy-groovydoc'
 }
 
-tasks.withType(Groovydoc).configureEach {
-    classpath += project.configurations.documentation
-    windowTitle = "${project.findProperty('pomArtifactId') ?: project.name} - $projectVersion"
-    docTitle = "${project.findProperty('pomArtifactId') ?: project.name} - $projectVersion"
-    footer = '''<!-- Matomo -->
-<script>
-    var _paq = window._paq = window._paq || [];
-    /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
-    _paq.push(["setDoNotTrack", true]);
-    _paq.push(["disableCookies"]);
-    _paq.push(['trackPageView']);
-    _paq.push(['enableLinkTracking']);
-    (function() {
-        var u="https://analytics.apache.org/";
-        _paq.push(['setTrackerUrl', u+'matomo.php']);
-        _paq.push(['setSiteId', '79']);
-        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-        g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-    })();
-</script>
-<!-- End Matomo Code -->'''
-    access = GroovydocAccess.PROTECTED
-    includeAuthor = false
-    includeMainForScripts = false
-    processScripts = false
-    noTimestamp = true
-    noVersionStamp = false
+tasks.withType(Groovydoc).configureEach { Groovydoc gdoc ->
+    gdoc.classpath += project.configurations.documentation
+    gdoc.windowTitle = "${project.findProperty('pomArtifactId') ?: project.name} - $projectVersion"
+    gdoc.docTitle = "${project.findProperty('pomArtifactId') ?: project.name} - $projectVersion"
 }

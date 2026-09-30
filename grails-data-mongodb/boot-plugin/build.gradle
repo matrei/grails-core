@@ -21,10 +21,13 @@ plugins {
     id 'groovy'
     id 'java-library'
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
     id 'org.apache.grails.buildsrc.publish'
     id 'org.apache.grails.buildsrc.sbom'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
     id 'org.apache.grails.gradle.grails-code-style'
+    id 'org.apache.grails.gradle.grails-jacoco'
 }
 
 version = projectVersion
@@ -84,8 +87,10 @@ dependencies {
         // impl: ConfigurableEnvironment
     }
     implementation 'org.springframework.boot:spring-boot-autoconfigure', {
-        // impl: AutoConfigurationPackages, @AutoConfigureAfter(runtime), @ConditionalOnMissingBean(runtime),
-        //       MongoAutoConfiguration, MongoProperties
+        // impl: AutoConfigurationPackages, @AutoConfigureAfter(runtime), @ConditionalOnMissingBean(runtime)
+    }
+    implementation 'org.springframework.boot:spring-boot-mongodb', {
+        // impl: MongoAutoConfiguration, MongoProperties
     }
 
     compileOnlyApi 'jakarta.persistence:jakarta.persistence-api', {
@@ -95,11 +100,14 @@ dependencies {
     compileOnly 'org.slf4j:slf4j-api', {
         // "optional" compile dependency in mongodb-driver-core
     }
+    compileOnly 'org.slf4j:slf4j-nop' // Prevents warning about missing slf4j implementation during compilation
 
+    testImplementation project(':grails-testing-support-mongodb')
     testImplementation 'org.spockframework:spock-core'
 
+    testCompileOnly 'org.slf4j:slf4j-nop' // Prevents warning about missing slf4j implementation during compilation
+
     testRuntimeOnly 'org.slf4j:slf4j-nop'
-    testImplementation project(':grails-testing-support-mongodb')
 }
 
 apply {

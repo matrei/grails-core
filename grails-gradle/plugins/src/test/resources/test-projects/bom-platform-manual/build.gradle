@@ -1,0 +1,35 @@
+plugins {
+    id 'org.apache.grails.gradle.grails-app'
+}
+
+// This project already declares a Grails BOM by hand (the Micronaut variant, as an
+// enforcedPlatform). The Grails Gradle plugin must therefore NOT auto-inject grails-bom on top
+// of it - exactly one Grails BOM may be applied.
+dependencies {
+    implementation enforcedPlatform("org.apache.grails:grails-micronaut-bom:$grailsVersion")
+}
+
+tasks.register('inspectBomSetup') {
+    doLast {
+        def isGrailsBom = { dep -> dep.group == 'org.apache.grails' && dep.name == 'grails-bom' }
+        def isMicronautBom = { dep -> dep.group == 'org.apache.grails' && dep.name == 'grails-micronaut-bom' }
+
+        // Observing compileClasspath runs the dependency actions of its whole hierarchy, so any
+        // platform the plugin contributes to 'implementation' is declared by now.
+        def compileDeps = configurations.compileClasspath.incoming.dependencies
+        println "HAS_GRAILS_BOM=${compileDeps.any(isGrailsBom)}"
+        println "HAS_MICRONAUT_BOM=${compileDeps.any(isMicronautBom)}"
+
+        // A sibling declarable configuration that does NOT declare a BOM by hand must still
+        // receive the single effective BOM (the Micronaut variant) via per-configuration
+        // injection. testCompileClasspath extends testImplementation; inspect what
+        // testImplementation itself declares once its dependency actions have run.
+        configurations.testCompileClasspath.incoming.dependencies
+        def testImplDeps = configurations.testImplementation.dependencies
+        println "SIBLING_HAS_MICRONAUT_BOM=${testImplDeps.any(isMicronautBom)}"
+        println "SIBLING_HAS_GRAILS_BOM=${testImplDeps.any(isGrailsBom)}"
+
+        def hasBomPropertyOverrides = project.plugins.findPlugin('org.apache.grails.gradle.bom-property-overrides') != null
+        println "HAS_BOM_PROPERTY_OVERRIDES=${hasBomPropertyOverrides}"
+    }
+}

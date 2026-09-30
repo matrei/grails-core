@@ -18,6 +18,8 @@
  */
 package org.grails.web.mapping
 
+import org.springframework.core.env.StandardEnvironment
+
 import grails.artefact.Artefact
 import grails.core.DefaultGrailsApplication
 import grails.plugins.DefaultGrailsPluginManager
@@ -25,7 +27,7 @@ import grails.util.GrailsWebMockUtil
 import grails.web.CamelCaseUrlConverter
 import grails.web.mapping.UrlCreator
 import grails.web.mapping.UrlMappingsHolder
-
+import org.apache.grails.core.plugins.DefaultPluginDiscovery
 import org.grails.plugins.CoreGrailsPlugin
 import org.grails.web.util.WebUtils
 import org.springframework.mock.web.MockHttpServletRequest
@@ -161,6 +163,8 @@ class LinkGeneratorSpec extends Specification {
     def "plugin paths are resolved with the plugin attribute"() {
         given:
             plugins = [CoreGrailsPlugin]
+
+        and:
 
         and:
             def pluginName = "core"
@@ -355,14 +359,14 @@ class LinkGeneratorSpec extends Specification {
         then: "it exists in the url"
         link == '/fooBarReq/one/two'
 
-        when: "The namespace is in the request params and the current controller is different"
+        when: "The namespace is in the request params and the target is a controller the application does not define"
         webRequest.setControllerNamespace("fooBarReq")
         webRequest.setControllerName("abc")
         linkParams.controller = 'one'
         linkParams.action = 'two'
 
-        then: "it is not included in the URL"
-        link == '/one/two'
+        then: "nothing is nearer than the request namespace, so the link stays in it"
+        link == '/fooBarReq/one/two'
 
         when: "Params and the request attribute exist"
         webRequest.setControllerNamespace("fooBarReq")
@@ -419,7 +423,10 @@ class LinkGeneratorSpec extends Specification {
     }
 
     protected setPlugins(List<Class> pluginClasses) {
-        pluginManager = new DefaultGrailsPluginManager(pluginClasses as Class[], new DefaultGrailsApplication())
+        def app = new DefaultGrailsApplication()
+        def pluginDiscovery = new DefaultPluginDiscovery(pluginClasses as Class[])
+        pluginDiscovery.init(new StandardEnvironment())
+        pluginManager = new DefaultGrailsPluginManager(app, pluginDiscovery)
         pluginManager.loadPlugins()
     }
 }

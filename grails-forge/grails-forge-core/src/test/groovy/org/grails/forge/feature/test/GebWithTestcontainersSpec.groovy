@@ -22,6 +22,7 @@ package org.grails.forge.feature.test
 import org.grails.forge.ApplicationContextSpec
 import org.grails.forge.application.ApplicationType
 import org.grails.forge.fixture.CommandOutputFixture
+import org.grails.forge.options.DevelopmentReloading
 import org.grails.forge.options.Options
 import org.grails.forge.options.TestFramework
 import spock.lang.Unroll
@@ -30,17 +31,42 @@ class GebWithTestcontainersSpec extends ApplicationContextSpec implements Comman
 
     void 'test dependencies'() {
         given:
-        def output = generate(ApplicationType.WEB, new Options(TestFramework.SPOCK))
+        def output = generate(ApplicationType.WEB, new Options(DevelopmentReloading.DEVTOOLS))
         def buildGradle = output['build.gradle']
 
         expect:
         buildGradle.contains('integrationTestImplementation testFixtures("org.apache.grails:grails-geb")')
     }
 
+    void 'test functional spec extends ContainerGebSpec'() {
+        given:
+        def output = generate(ApplicationType.WEB, new Options(DevelopmentReloading.DEVTOOLS))
+        def spec = output['src/integration-test/groovy/example/grails/FooSpec.groovy']
+
+        expect:
+        spec.contains('import grails.plugin.geb.ContainerGebSpec')
+        spec.contains('class FooSpec extends ContainerGebSpec')
+    }
+
+    void 'test geb.env system property is not passed to the test tasks'() {
+        given:
+        def output = generate(ApplicationType.WEB, new Options(DevelopmentReloading.DEVTOOLS))
+        def buildGradle = output['build.gradle']
+
+        expect:
+        !buildGradle.contains('geb.env')
+    }
+
+    void 'test feature is applied by default only for web applications'() {
+        expect:
+        getFeatures([], ApplicationType.WEB).contains('geb-with-testcontainers')
+        !getFeatures([], ApplicationType.WEB_PLUGIN).contains('geb-with-testcontainers')
+    }
+
     @Unroll
     void 'test feature geb-with-testcontainers is not supported for #applicationType application'(ApplicationType applicationType) {
         when:
-        generate(applicationType, new Options(TestFramework.SPOCK), ['geb-with-testcontainers'])
+        generate(applicationType, new Options(DevelopmentReloading.DEVTOOLS), ['geb-with-testcontainers'])
 
         then:
         def e = thrown(IllegalArgumentException)

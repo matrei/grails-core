@@ -22,6 +22,7 @@ plugins {
     id 'groovy'
     id 'com.gradleup.shadow'
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
 }
 
@@ -33,7 +34,9 @@ dependencies {
 
     // shell-cli dependencies
     implementation 'org.apache.grails:grails-shell-cli'
-    implementation 'org.springframework.boot:spring-boot-cli'
+    implementation('org.springframework.boot:spring-boot-cli') {
+        exclude group: 'jline', module: 'jline'
+    }
     implementation 'org.apache.groovy:groovy'
     implementation 'org.apache.groovy:groovy-ant'
     implementation 'org.apache.groovy:groovy-templates'
@@ -76,6 +79,7 @@ shadowJarTask.configure { ShadowJar it ->
 
     it.exclude(
             'META-INF/DEPENDENCIES', // until we publish our own SBOM, this won't be correct so exclude
+            'META-INF/sbom.json', // intermediate build, exclude conflicting files
             'about.html' // restatement of the Eclipse Distribution License - Version 1.0 for jakarta
     )
 }

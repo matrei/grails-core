@@ -24,19 +24,20 @@ import org.grails.forge.application.ApplicationType;
 import org.grails.forge.application.Project;
 import org.grails.forge.application.generator.GeneratorContext;
 import org.grails.forge.build.dependencies.Dependency;
-import org.grails.forge.feature.Category;
 import org.grails.forge.feature.DefaultFeature;
 import org.grails.forge.feature.Feature;
 import org.grails.forge.feature.FeatureContext;
-import org.grails.forge.feature.FeaturePhase;
-import org.grails.forge.feature.test.template.groovyJunit;
-import org.grails.forge.options.*;
+import org.grails.forge.feature.test.template.containerGebSpec;
+import org.grails.forge.options.DefaultTestRockerModelProvider;
+import org.grails.forge.options.Options;
+import org.grails.forge.options.TestFramework;
+import org.grails.forge.options.TestRockerModelProvider;
 import org.grails.forge.template.RockerTemplate;
 
 import java.util.Set;
 
 @Singleton
-public class GebWithTestcontainers implements DefaultFeature {
+public class GebWithTestcontainers implements GebFeature, DefaultFeature {
 
     private final Spock spock;
 
@@ -46,7 +47,8 @@ public class GebWithTestcontainers implements DefaultFeature {
 
     @Override
     public boolean shouldApply(ApplicationType applicationType, Options options, Set<Feature> selectedFeatures) {
-        return applicationType == ApplicationType.WEB && options.getTestFramework() != TestFramework.JUNIT;
+        return applicationType == ApplicationType.WEB &&
+                selectedFeatures.stream().noneMatch(f -> f instanceof GebFeature);
     }
 
     @NonNull
@@ -64,21 +66,6 @@ public class GebWithTestcontainers implements DefaultFeature {
     @Override
     public String getDescription() {
         return "This plugins configure Geb for Grails framework to write automation tests that run with Testcontainers.";
-    }
-
-    @Override
-    public String getCategory() {
-        return Category.TESTING;
-    }
-
-    @Override
-    public int getOrder() {
-        return FeaturePhase.TEST.getOrder();
-    }
-
-    @Override
-    public boolean supports(ApplicationType applicationType) {
-        return applicationType == ApplicationType.WEB || applicationType == ApplicationType.WEB_PLUGIN;
     }
 
     @Override
@@ -107,13 +94,12 @@ public class GebWithTestcontainers implements DefaultFeature {
 
         Project project = generatorContext.getProject();
         TestRockerModelProvider provider = new DefaultTestRockerModelProvider(
-                org.grails.forge.feature.test.template.spock.template(project),
-                groovyJunit.template(project)
+                containerGebSpec.template(project)
         );
         generatorContext.addTemplate("applicationTest",
                 new RockerTemplate(
                         generatorContext.getIntegrationTestSourcePath("/{packagePath}/{className}"),
-                        provider.findModel(Language.DEFAULT_OPTION, generatorContext.getTestFramework())
+                        provider.findModel(TestFramework.SPOCK)
                 )
         );
     }

@@ -18,7 +18,7 @@
  */
 package grails.plugin.json.view.api
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import grails.persistence.Entity
 import grails.plugin.json.view.test.JsonRenderResult
 import grails.plugin.json.view.test.JsonViewTest
@@ -30,10 +30,17 @@ import spock.lang.Specification
 class JsonApiSpec extends Specification implements JsonViewTest, GrailsUnitTest {
 
     @Shared
-    ObjectMapper objectMapper = new ObjectMapper()
+    JsonMapper objectMapper = JsonMapper.builder().build()
 
     void setup() {
+        SuperHero.clearConstraintsMapCache()
         mappingContext.addPersistentEntities(Widget, Author, Book, ResearchPaper)
+    }
+
+    void cleanup() {
+        // Leaves SuperHero's cached constraints map clean for whichever spec runs next in this
+        // fork, rather than relying solely on the reset in setup() above.
+        SuperHero.clearConstraintsMapCache()
     }
 
     void 'test simple case'() {

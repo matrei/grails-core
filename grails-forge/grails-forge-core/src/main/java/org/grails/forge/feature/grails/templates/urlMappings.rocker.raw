@@ -27,6 +27,7 @@ package @project.getPackageName()
 class UrlMappings {
     static mappings = {
 @if(applicationType == ApplicationType.WEB || applicationType == ApplicationType.WEB_PLUGIN) {
+        "/$namespace/$controller/$action?/$id?(.$format)?" {}
         "/$controller/$action?/$id?(.$format)?"{
             constraints {
                 // apply constraints here
@@ -34,6 +35,10 @@ class UrlMappings {
         }
 
         "/"(view:"/index")
+@if(applicationType == ApplicationType.WEB) {
+        // Browsers request /favicon.ico for pages that declare no icon of their own
+        "/favicon.ico"(redirect: [uri: '/assets/favicon.ico', permanent: true])
+}
 }
 @if (applicationType == ApplicationType.REST_API) {
         delete "/$controller/$id(.$format)?"(action:"delete")

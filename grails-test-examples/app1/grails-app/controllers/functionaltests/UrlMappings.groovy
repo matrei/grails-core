@@ -29,6 +29,9 @@ class UrlMappings {
             }
         }
 
+        // See RequestPathSpec.groovy - one request through filter chain, dispatcher, mapping and controller
+        "/request-path"(resources: 'requestPath')
+
         "/alphaDemo"(controller: 'demo', action: 'doit', namespace: 'alpha')
         "/betaDemo"(controller: 'demo', action: 'doit', namespace: 'beta')
 
@@ -42,6 +45,89 @@ class UrlMappings {
         "/new-url"(controller: 'baz', 'action': 'newUrl')
 
         "/forward/$param1"(controller: 'forwarding', action: 'two')
+
+        // === URL Mappings Test Routes ===
+        
+        // Static path mapping
+        "/api/test"(controller: 'urlMappingsTest', action: 'index')
+        
+        // Path variable mapping
+        "/api/items/$id"(controller: 'urlMappingsTest', action: 'show')
+        
+        // Multiple path variables (date pattern)
+        "/api/archive/$year/$month/$day"(controller: 'urlMappingsTest', action: 'pathVars')
+        
+        // Named URL mapping
+        name testNamed: "/api/named/$name"(controller: 'urlMappingsTest', action: 'named')
+        
+        // Constrained path variable (only uppercase letters allowed)
+        "/api/codes/$code" {
+            controller = 'urlMappingsTest'
+            action = 'constrained'
+            constraints {
+                code matches: /[A-Z]+/
+            }
+        }
+        
+        // Wildcard double-star captures remaining path
+        "/api/files/**"(controller: 'urlMappingsTest', action: 'wildcard') {
+            path = { request.forwardURI - '/api/files/' }
+        }
+        
+        // HTTP method constraints
+        "/api/resources"(controller: 'urlMappingsTest') {
+            action = [GET: 'list', POST: 'save']
+        }
+        "/api/resources/$id"(controller: 'urlMappingsTest') {
+            action = [GET: 'show', PUT: 'update', DELETE: 'delete']
+        }
+        
+        // Optional path variable
+        "/api/optional/$required/$optional?"(controller: 'urlMappingsTest', action: 'optional')
+        
+        // HTTP method only mapping
+        "/api/method-test"(controller: 'urlMappingsTest', action: 'httpMethod')
+        
+        // Redirect mapping with permanent flag
+        "/api/old-endpoint"(redirect: '/api/test', permanent: true)
+
+        // Group defaults
+        group('/group-defaults', namespace: 'api', controller: 'groupDefaults') {
+            '/list'(action: 'list')
+            '/show'(action: 'show')
+        }
+
+        group('/group-override', namespace: 'api', controller: 'groupDefaults') {
+            '/special'(controller: 'groupOverride', action: 'handle')
+            '/normal'(action: 'index')
+        }
+
+        group('/group-no-defaults') {
+            '/info'(controller: 'urlMappingsTest', action: 'index')
+        }
+
+        group('/community', namespace: 'api') {
+            group('/topics', controller: 'groupDefaults') {
+                '/gallery'(action: 'gallery')
+            }
+        }
+
+        // === CORS Test Routes (under /api/** which has CORS enabled) ===
+        "/api/cors"(controller: 'corsTest', action: 'index')
+        "/api/cors/data"(controller: 'corsTest', action: 'getData')
+        "/api/cors/items/$id"(controller: 'corsTest') {
+            action = [GET: 'getItem', PUT: 'update', DELETE: 'delete']
+        }
+        "/api/cors/items"(controller: 'corsTest') {
+            action = [GET: 'getData', POST: 'create']
+        }
+        "/api/cors/custom-headers"(controller: 'corsTest', action: 'withCustomHeaders')
+        "/api/cors/echo-origin"(controller: 'corsTest', action: 'echoOrigin')
+        "/api/cors/authenticated"(controller: 'corsTest', action: 'authenticated')
+        "/api/cors/slow"(controller: 'corsTest', action: 'slowRequest')
+
+        // === Advanced Interceptor Matching Test Routes ===
+        "/api/advancedMatching/$action?/$id?"(controller: 'advancedMatching', namespace: 'api')
 
         "/"(view:"/index")
         "500"(view:'/error')

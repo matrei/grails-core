@@ -18,8 +18,10 @@
  */
 package org.apache.grails.data.mongo.core
 
+import com.github.dockerjava.api.model.Ulimit
 import com.mongodb.BasicDBObject
 import com.mongodb.client.MongoClient
+import com.mongodb.client.MongoDatabase
 import grails.core.DefaultGrailsApplication
 import grails.core.GrailsApplication
 import grails.gorm.validation.PersistentEntityValidator
@@ -33,11 +35,13 @@ import org.grails.datastore.gorm.mongo.Birthday
 import org.grails.datastore.gorm.validation.constraints.eval.DefaultConstraintEvaluator
 import org.grails.datastore.gorm.validation.constraints.registry.DefaultConstraintRegistry
 import org.grails.datastore.mapping.core.Session
+import org.grails.datastore.mapping.multitenancy.MultiTenancySettings
+import org.grails.datastore.mapping.multitenancy.resolvers.SystemPropertyTenantResolver
 import org.grails.datastore.mapping.engine.types.AbstractMappingAwareCustomTypeMarshaller
 import org.grails.datastore.mapping.model.MappingContext
 import org.grails.datastore.mapping.model.PersistentEntity
 import org.grails.datastore.mapping.model.PersistentProperty
-import org.grails.datastore.mapping.mongo.AbstractMongoSession
+import org.grails.datastore.mapping.core.DatastoreUtils
 import org.grails.datastore.mapping.mongo.MongoDatastore
 import org.grails.datastore.mapping.mongo.config.MongoSettings
 import org.grails.datastore.mapping.query.Query
@@ -51,6 +55,8 @@ import org.testcontainers.containers.output.Slf4jLogConsumer
 @Slf4j
 class GrailsDataMongoTckManager extends GrailsDataTckManager {
 
+    private static final long MONGOD_OPEN_FILES_LIMIT = 65536L
+
     MongoDBContainer mongoDBContainer
 
     MongoDatastore mongoDatastore
@@ -59,11 +65,18 @@ class GrailsDataMongoTckManager extends GrailsDataTckManager {
     MappingContext mappingContext
 
     Map<String, Object> configuration
+    MongoDatastore multiDataSourceDatastore
+    MongoDatastore multiTenantMultiDataSourceDatastore
 
     @Override
     void setupSpec() {
         super.setupSpec()
+        // Docker's default soft limit of 1024 open files is easily exhausted by WiredTiger, and a crashed
+        // mongod leaves the test worker waiting for server selection indefinitely
         mongoDBContainer = new MongoDBContainer(AbstractMongoGrailsExtension.desiredMongoDockerName)
+                .withCreateContainerCmdModifier { cmd ->
+                    cmd.hostConfig.withUlimits([new Ulimit('nofile', MONGOD_OPEN_FILES_LIMIT, MONGOD_OPEN_FILES_LIMIT)])
+                }
         mongoDBContainer.start()
         mongoDBContainer.followOutput(new Slf4jLogConsumer(LoggerFactory.getLogger("testcontainers")))
 
@@ -83,7 +96,7 @@ class GrailsDataMongoTckManager extends GrailsDataTckManager {
 
     @Override
     Session createSession() {
-        def allClasses = getDomainClasses() as Class[]
+        def allClasses = domainClasses
         def ctx = new GenericApplicationContext()
         ctx.refresh()
 
@@ -119,7 +132,7 @@ class GrailsDataMongoTckManager extends GrailsDataTckManager {
                 return null
             }
         })
-        mappingContext.addPersistentEntities(allClasses as Class[])
+        mappingContext.addPersistentEntities(allClasses)
         mongoClient = mongoDatastore.getMongoClient()
 
         grailsApplication = new DefaultGrailsApplication(allClasses, getClass().getClassLoader())
@@ -131,20 +144,131 @@ class GrailsDataMongoTckManager extends GrailsDataTckManager {
 
     @Override
     void destroy() {
-        mongoDatastore.getMongoClient().listDatabaseNames().findAll {!(it in ['admin', 'config', 'local']) }.each {
-            try {
-                mongoDatastore.getMongoClient().getDatabase(it).drop()
-            }
-            catch(e) {
-                log.warn("Could not drop ${it}")
+        try {
+            mongoDatastore?.mongoClient?.listDatabaseNames()
+                    ?.findAll { !(it in ['admin', 'config', 'local']) }
+                    ?.each {
+                        try {
+                            clearDatabase(mongoDatastore.mongoClient.getDatabase(it as String))
+                        }
+                        catch (ignored) {
+                            log.warn("Could not clear ${it}")
+                        }
+                    }
+            for (cls in domainClasses) {
+                GormEnhancer.findValidationApi(cls).validator = null
             }
         }
-        mongoDatastore.buildIndex()
-        for (cls in getDomainClasses()) {
-            GormEnhancer.findValidationApi(cls).setValidator(null)
+        finally {
+            try {
+                mongoDatastore?.close()
+            }
+            catch (ignored) {
+            }
+            mongoDatastore = null
+            mongoClient = null
+            grailsApplication = null
+            mappingContext = null
         }
 
         super.destroy()
+    }
+
+    /**
+     * Removes the documents but keeps the collections and their indexes. The datastore of the next feature
+     * finds them in place, whereas dropping the database makes it create every collection and index again,
+     * and WiredTiger keeps the files of the dropped ones open until its next checkpoint.
+     */
+    private void clearDatabase(MongoDatabase database) {
+        for (String collectionName in database.listCollectionNames()) {
+            if (collectionName.startsWith('system.')) {
+                continue
+            }
+            try {
+                database.getCollection(collectionName).deleteMany(new Document())
+            }
+            catch (e) {
+                // e.g. views do not support deletes
+                log.warn("Could not clear ${collectionName}, dropping it instead: ${e.message}")
+                database.getCollection(collectionName).drop()
+            }
+        }
+    }
+
+    @Override
+    boolean supportsMultipleDataSources() {
+        true
+    }
+
+    @Override
+    void setupMultiDataSource(Class... domainClasses) {
+        String host = mongoDBContainer.host
+        int port = mongoDBContainer.getMappedPort(AbstractMongoGrailsExtension.DEFAULT_MONGO_PORT)
+        Map config = [
+                'grails.mongodb.url'       : "mongodb://${host}:${port}/tckDefaultDB" as String,
+                'grails.mongodb.connections': [
+                        'secondary': ['url': "mongodb://${host}:${port}/tckSecondaryDB" as String],
+                ],
+        ]
+        multiDataSourceDatastore = new MongoDatastore(DatastoreUtils.createPropertyResolver(config), domainClasses)
+    }
+
+    @Override
+    void cleanupMultiDataSource() {
+        if (multiDataSourceDatastore != null) {
+            multiDataSourceDatastore.getMongoClient().listDatabaseNames()
+                    .findAll { it.startsWith('tck') }
+                    .each { multiDataSourceDatastore.getMongoClient().getDatabase(it).drop() }
+            multiDataSourceDatastore.close()
+            multiDataSourceDatastore = null
+        }
+    }
+
+    @Override
+    def getServiceForConnection(Class serviceType, String connectionName) {
+        multiDataSourceDatastore
+                .getDatastoreForConnection(connectionName)
+                .getService(serviceType)
+    }
+
+    @Override
+    boolean supportsMultiTenantMultiDataSource() {
+        true
+    }
+
+    @Override
+    void setupMultiTenantMultiDataSource(Class... domainClasses) {
+        String host = mongoDBContainer.host
+        int port = mongoDBContainer.getMappedPort(AbstractMongoGrailsExtension.DEFAULT_MONGO_PORT)
+        Map config = [
+                'grails.gorm.multiTenancy.mode'               : MultiTenancySettings.MultiTenancyMode.DISCRIMINATOR,
+                'grails.gorm.multiTenancy.tenantResolverClass' : SystemPropertyTenantResolver,
+                'grails.mongodb.url'                           : "mongodb://${host}:${port}/tckMtDefaultDB" as String,
+                'grails.mongodb.connections'                   : [
+                        'secondary': ['url': "mongodb://${host}:${port}/tckMtSecondaryDB" as String],
+                ],
+        ]
+        multiTenantMultiDataSourceDatastore = new MongoDatastore(
+                DatastoreUtils.createPropertyResolver(config), domainClasses
+        )
+    }
+
+    @Override
+    void cleanupMultiTenantMultiDataSource() {
+        if (multiTenantMultiDataSourceDatastore != null) {
+            multiTenantMultiDataSourceDatastore.getMongoClient().listDatabaseNames()
+                    .findAll { it.startsWith('tckMt') }
+                    .each { multiTenantMultiDataSourceDatastore.getMongoClient().getDatabase(it).drop() }
+            multiTenantMultiDataSourceDatastore.close()
+            multiTenantMultiDataSourceDatastore = null
+        }
+    }
+
+    @Override
+    def getServiceForMultiTenantConnection(Class serviceType, String connectionName) {
+        multiTenantMultiDataSourceDatastore
+                .getDatastoreForConnection(connectionName)
+                .getService(serviceType)
     }
 
     void setupValidator(Class entityClass, Validator validator = null) {

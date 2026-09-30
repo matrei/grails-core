@@ -23,9 +23,17 @@ import grails.artefact.Artefact
 import grails.testing.gorm.DataTest
 import grails.testing.web.controllers.ControllerUnitTest
 import grails.validation.Validateable
+import grails.web.databinding.BindAllowed
+import org.grails.validation.ConstraintEvalUtils
 import spock.lang.Issue
 import spock.lang.Specification
 
+/**
+ * Tests for command object binding and validation.
+ * This spec modifies global shared constraints via doWithConfig() which affects
+ * ConstraintEvalUtils.defaultConstraintsMap - a static cache shared across all tests
+ * in the same JVM fork. The setup/cleanup methods clear this cache to prevent test environment pollution.
+ */
 class CommandObjectsSpec extends Specification implements ControllerUnitTest<TestController>, DataTest {
 
     Closure doWithSpring() {{ ->
@@ -37,6 +45,28 @@ class CommandObjectsSpec extends Specification implements ControllerUnitTest<Tes
             isProg inList: ['Emerson', 'Lake', 'Palmer']
         }
     }}
+
+    /**
+     * Clear the static constraints cache for classes that use shared constraints.
+     * This prevents test environment pollution because the Validateable trait caches
+     * constraints in a static field, and constraints may be evaluated before doWithConfig()
+     * has registered the shared constraint 'isProg'.
+     *
+     * Also clear ConstraintEvalUtils.defaultConstraintsMap which caches shared constraints
+     * globally. Without this cleanup, another test's config may have been cached,
+     * causing the 'isProg' shared constraint to not be found.
+     */
+    def setup() {
+        ConstraintEvalUtils.clearDefaultConstraints()
+        Artist.clearConstraintsMapCache()
+        ArtistSubclass.clearConstraintsMapCache()
+    }
+
+    def cleanup() {
+        ConstraintEvalUtils.clearDefaultConstraints()
+        Artist.clearConstraintsMapCache()
+        ArtistSubclass.clearConstraintsMapCache()
+    }
 
     void "Test command object with date binding"() {
         setup:
@@ -353,10 +383,28 @@ class CommandObjectsSpec extends Specification implements ControllerUnitTest<Tes
         then:
         commandObject.testId == 1
     }
+
+    void '@BindAllowed on a command object action parameter only binds listed fields'() {
+        given:
+        params.displayName = 'Grace Hopper'
+        params.admin = true
+        params.role = 'admin'
+
+        when:
+        def model = controller.methodActionWithBindAllowedUser()
+        def commandObject = model.commandObject
+
+        then:
+        commandObject.displayName == 'Grace Hopper'
+        !commandObject.admin
+        commandObject.role == null
+    }
 }
 
 @Artefact('Controller')
 class TestController {
+    static final String USER_ALLOWED_FIELD = 'displayName'
+
     def methodAction(Person p) {
         [person: p]
     }
@@ -418,6 +466,10 @@ class TestController {
 
     def methodTakingParent(ParentCommand command) {
         [commandObject: command, pId: 2]
+    }
+
+    def methodActionWithBindAllowedUser(@BindAllowed([USER_ALLOWED_FIELD]) UserCommand command) {
+        [commandObject: command]
     }
 }
 
@@ -503,4 +555,10 @@ abstract class WithGeneric<G> implements Validateable {
 }
 
 class ConcreteGenericBased extends WithGeneric<String> {
+}
+
+class UserCommand implements Validateable {
+    String displayName
+    boolean admin
+    String role
 }

@@ -45,6 +45,8 @@ import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.persister.entity.PropertyMapping;
 import org.hibernate.type.BasicType;
 import org.hibernate.type.TypeResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.convert.ConversionService;
@@ -81,6 +83,8 @@ import org.grails.orm.hibernate.proxy.HibernateProxyHandler;
  */
 @SuppressWarnings("rawtypes")
 public abstract class AbstractHibernateQuery extends Query {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AbstractHibernateQuery.class);
 
     public static final String SIZE_CONSTRAINT_PREFIX = "Size";
 
@@ -479,10 +483,16 @@ public abstract class AbstractHibernateQuery extends Query {
     public AssociationQuery createQuery(String associationName) {
         final PersistentProperty property = entity.getPropertyByName(calculatePropertyName(associationName));
         if (property != null && (property instanceof Association)) {
+            Association association = (Association) property;
+            if (association instanceof Embedded) {
+                // Hibernate cannot create a sub-criteria on a component ("Criteria objects
+                // cannot be created directly on components"); return a plain association
+                // query whose criteria the criterion adapter applies via dotted paths.
+                return super.createQuery(associationName);
+            }
             String alias = generateAlias(associationName);
             CriteriaAndAlias subCriteria = getOrCreateAlias(associationName, alias);
 
-            Association association = (Association) property;
             if (subCriteria.criteria != null) {
                 return new HibernateAssociationQuery(subCriteria.criteria, (AbstractHibernateSession) getSession(), association.getAssociatedEntity(), association, alias);
             }
@@ -565,6 +575,21 @@ public abstract class AbstractHibernateQuery extends Query {
         return hibernateProjectionList;
     }
 
+    /**
+     * @since 8.0
+     */
+    @Override
+    public Number countResults() {
+        if (hibernateProjectionList != null && !hibernateProjectionList.isEmpty()) {
+            LOG.warn("DetachedCriteria.count() with user-defined projections cannot use a SQL count query " +
+                    "due to a Hibernate 5 limitation. All grouped result rows will be loaded into memory to " +
+                    "determine the count. This may impact performance on large result sets.");
+            return list().size();
+        }
+        projections().count();
+        return (Number) singleResult();
+    }
+
     @Override
     public Query max(int max) {
         if (criteria != null)
@@ -608,6 +633,9 @@ public abstract class AbstractHibernateQuery extends Query {
 
     @Override
     public Query order(Order order) {
+        if (order == null) {
+            return this;
+        }
         super.order(order);
 
         String property = order.getProperty();
@@ -685,9 +713,98 @@ public abstract class AbstractHibernateQuery extends Query {
         c.addOrder(order.isIgnoreCase() ? hibernateOrder.ignoreCase() : hibernateOrder);
     }
 
+    private String calculateProjectionPropertyName(String propertyName) {
+        int firstDot = propertyName.indexOf('.');
+        if (firstDot < 0) {
+            return calculatePropertyName(propertyName);
+        }
+
+        PersistentEntity currentEntity = getEntity();
+        String currentAlias = null;
+        StringBuilder associationPath = new StringBuilder();
+        String[] tokens = propertyName.split("\\.");
+
+        for (int i = 0; i < tokens.length - 1; i++) {
+            String token = tokens[i];
+            PersistentProperty persistentProperty = currentEntity != null ? currentEntity.getPropertyByName(token) : null;
+            if (!(persistentProperty instanceof Association) || persistentProperty instanceof Embedded) {
+                return calculatePropertyName(propertyName);
+            }
+
+            if (associationPath.length() > 0) {
+                associationPath.append('.');
+            }
+            associationPath.append(token);
+
+            // Use LEFT JOIN for auto-created projection aliases so that rows
+            // with null associations are preserved in the result set.
+            String path = associationPath.toString();
+            if (!joinTypes.containsKey(path)) {
+                joinTypes.put(path, JoinType.LEFT);
+            }
+            CriteriaAndAlias criteriaAndAlias = getOrCreateAlias(path, generateAlias(token));
+            if (criteriaAndAlias == null) {
+                return calculatePropertyName(propertyName);
+            }
+            currentAlias = criteriaAndAlias.alias;
+            currentEntity = ((Association) persistentProperty).getAssociatedEntity();
+        }
+
+        if (currentAlias == null) {
+            return calculatePropertyName(propertyName);
+        }
+        return currentAlias + '.' + tokens[tokens.length - 1];
+    }
+
+    private Query.Projection normalizeProjectionPropertyPath(Query.Projection projection) {
+        if (!(projection instanceof Query.PropertyProjection)) {
+            return projection;
+        }
+
+        String propertyName = ((Query.PropertyProjection) projection).getPropertyName();
+        String normalizedPropertyName = calculateProjectionPropertyName(propertyName);
+        if (propertyName.equals(normalizedPropertyName)) {
+            return projection;
+        }
+
+        if (projection instanceof Query.DistinctPropertyProjection) {
+            return org.grails.datastore.mapping.query.Projections.distinct(normalizedPropertyName);
+        }
+        if (projection instanceof Query.CountDistinctProjection) {
+            return org.grails.datastore.mapping.query.Projections.countDistinct(normalizedPropertyName);
+        }
+        if (projection instanceof Query.GroupPropertyProjection) {
+            return org.grails.datastore.mapping.query.Projections.groupProperty(normalizedPropertyName);
+        }
+        if (projection instanceof Query.SumProjection) {
+            return org.grails.datastore.mapping.query.Projections.sum(normalizedPropertyName);
+        }
+        if (projection instanceof Query.MinProjection) {
+            return org.grails.datastore.mapping.query.Projections.min(normalizedPropertyName);
+        }
+        if (projection instanceof Query.MaxProjection) {
+            return org.grails.datastore.mapping.query.Projections.max(normalizedPropertyName);
+        }
+        if (projection instanceof Query.AvgProjection) {
+            return org.grails.datastore.mapping.query.Projections.avg(normalizedPropertyName);
+        }
+        return org.grails.datastore.mapping.query.Projections.property(normalizedPropertyName);
+    }
+
     @Override
     public Query join(String property) {
         this.hasJoins = true;
+        if (criteria != null)
+            criteria.setFetchMode(property, FetchMode.JOIN);
+        else if (detachedCriteria != null)
+            detachedCriteria.setFetchMode(property, FetchMode.JOIN);
+        return this;
+    }
+
+    @Override
+    public Query join(String property, JoinType joinType) {
+        this.hasJoins = true;
+        this.joinTypes.put(property, joinType);
         if (criteria != null)
             criteria.setFetchMode(property, FetchMode.JOIN);
         else if (detachedCriteria != null)
@@ -946,19 +1063,19 @@ public abstract class AbstractHibernateQuery extends Query {
 
         @Override
         public ProjectionList add(Projection p) {
-            projectionList.add(new HibernateProjectionAdapter(p).toHibernateProjection());
+            projectionList.add(new HibernateProjectionAdapter(normalizeProjectionPropertyPath(p)).toHibernateProjection());
             return this;
         }
 
         @Override
         public org.grails.datastore.mapping.query.api.ProjectionList countDistinct(String property) {
-            projectionList.add(Projections.countDistinct(calculatePropertyName(property)));
+            projectionList.add(Projections.countDistinct(calculateProjectionPropertyName(property)));
             return this;
         }
 
         @Override
         public org.grails.datastore.mapping.query.api.ProjectionList distinct(String property) {
-            projectionList.add(Projections.distinct(Projections.property(calculatePropertyName(property))));
+            projectionList.add(Projections.distinct(Projections.property(calculateProjectionPropertyName(property))));
             return this;
         }
 
@@ -984,31 +1101,31 @@ public abstract class AbstractHibernateQuery extends Query {
 
         @Override
         public ProjectionList property(String name) {
-            projectionList.add(Projections.property(calculatePropertyName(name)));
+            projectionList.add(Projections.property(calculateProjectionPropertyName(name)));
             return this;
         }
 
         @Override
         public ProjectionList sum(String name) {
-            projectionList.add(Projections.sum(calculatePropertyName(name)));
+            projectionList.add(Projections.sum(calculateProjectionPropertyName(name)));
             return this;
         }
 
         @Override
         public ProjectionList min(String name) {
-            projectionList.add(Projections.min(calculatePropertyName(name)));
+            projectionList.add(Projections.min(calculateProjectionPropertyName(name)));
             return this;
         }
 
         @Override
         public ProjectionList max(String name) {
-            projectionList.add(Projections.max(calculatePropertyName(name)));
+            projectionList.add(Projections.max(calculateProjectionPropertyName(name)));
             return this;
         }
 
         @Override
         public ProjectionList avg(String name) {
-            projectionList.add(Projections.avg(calculatePropertyName(name)));
+            projectionList.add(Projections.avg(calculateProjectionPropertyName(name)));
             return this;
         }
 

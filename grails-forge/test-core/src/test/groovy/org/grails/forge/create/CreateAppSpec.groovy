@@ -21,6 +21,8 @@ package org.grails.forge.create
 
 import org.grails.forge.application.ApplicationType
 import org.grails.forge.application.OperatingSystem
+import org.grails.forge.options.DevelopmentReloading
+import org.grails.forge.options.JdkVersion
 import org.grails.forge.utils.CommandSpec
 
 class CreateAppSpec extends CommandSpec {
@@ -44,7 +46,7 @@ class CreateAppSpec extends CommandSpec {
             dependencies are included for OperatingSystem.MACOS_ARCH64 and this
             causes the integrationTest task to fail.
         */
-        final String output = executeGradle("build -x iT").getOutput()
+        final String output = executeGradle("build -x integrationTest").getOutput()
 
         then:
         output.contains('BUILD SUCCESSFUL')
@@ -84,14 +86,17 @@ class CreateAppSpec extends CommandSpec {
 
     void "test create-app with micronaut feature"() {
         given:
-        generateProject(OperatingSystem.MACOS_ARCH64, ['grails-micronaut'], ApplicationType.WEB)
+        // Micronaut features require JDK 25+ because micronaut-core's ScopedValues
+        // references java.lang.ScopedValue.CallableOp (JEP 506, finalized in JDK 25).
+        generateProject(OperatingSystem.MACOS_ARCH64, ['grails-micronaut'], ApplicationType.WEB,
+                DevelopmentReloading.DEFAULT_OPTION, JdkVersion.JDK_25)
 
         def gradleProperties = new File(dir, 'gradle.properties')
         def gradleBuildFile = new File(dir, 'build.gradle')
 
         expect:
         gradleProperties.exists()
-        gradleProperties.text.contains('micronautPlatformVersion=4.10.1')
+        gradleProperties.text.contains('micronautPlatformVersion=4.10.16')
         gradleBuildFile.exists()
         gradleBuildFile.text.contains('implementation "org.apache.grails:grails-micronaut"')
     }

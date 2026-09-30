@@ -18,6 +18,7 @@
  */
 package org.grails.plugins.web.taglib
 
+import java.text.Collator
 import java.text.DateFormat
 import java.text.DateFormatSymbols
 
@@ -31,6 +32,7 @@ import org.springframework.context.ApplicationContextAware
 import org.springframework.context.MessageSourceResolvable
 import org.springframework.core.convert.ConversionService
 import org.springframework.http.HttpMethod
+import org.springframework.util.StringUtils
 import org.springframework.web.servlet.support.RequestContextUtils as RCU
 import org.springframework.web.servlet.support.RequestDataValueProcessor
 
@@ -45,6 +47,7 @@ import org.grails.core.artefact.DomainClassArtefactHandler
 import org.grails.encoder.CodecLookup
 import org.grails.encoder.Encoder
 import org.grails.plugins.web.GrailsTagDateHelper
+import org.grails.taglib.TagOutput
 import org.grails.web.servlet.mvc.SynchronizerTokensHolder
 
 /**
@@ -67,6 +70,18 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
     ConversionService conversionService
     GrailsTagDateHelper grailsTagDateHelper
 
+    // Markup for localeSelect's type="dropdown", in the same spirit as ApplicationTagLib's
+    // flashMessages classes: Bootstrap by default, overridable per invocation through the
+    // matching attribute or app-wide by setting the property. Nothing here is emitted for
+    // any other type, and a caller on another CSS framework supplies a body instead.
+    String localeSelectNavItemClass = 'nav-item dropdown'
+    String localeSelectToggleClass = 'nav-link dropdown-toggle'
+    String localeSelectToggleIcon = 'bi bi-globe me-1'
+    String localeSelectMenuClass = 'dropdown-menu dropdown-menu-end'
+    String localeSelectItemClass = 'dropdown-item'
+    String localeSelectActiveClass = 'active'
+    String localeSelectDividerClass = 'dropdown-divider'
+
     CodecLookup codecLookup
 
     private List<String> booleanAttributes = DEFAULT_BOOLEAN_ATTRIBUTES
@@ -84,7 +99,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
         configureCsrf()
     }
 
-    void configureCsrf() {
+    private void configureCsrf() {
         try {
             var filterChainProxy = applicationContext.getBean(
                     Class.forName('org.springframework.security.web.FilterChainProxy'))
@@ -104,8 +119,14 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      *
      * @attr name REQUIRED the field name
      * @attr value the field value
+     * @param name required field name
+     * @param attrs optional tag attributes including value, id, class and other HTML attributes
      */
-    Closure textField = { attrs ->
+    def textField(Map attrs) {
+        textFieldImpl(attrs)
+    }
+
+    private void textFieldImpl(Map attrs) {
         attrs.type = 'text'
         attrs.tagName = 'textField'
         fieldImpl(out, attrs)
@@ -118,8 +139,14 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      *
      * @attr name REQUIRED the field name
      * @attr value the field value
+     * @param name required field name
+     * @param attrs optional tag attributes including value, id, class and other HTML attributes
      */
-    Closure passwordField = { attrs ->
+    def passwordField(Map attrs) {
+        passwordFieldImpl(attrs)
+    }
+
+    private void passwordFieldImpl(Map attrs) {
         attrs.type = 'password'
         attrs.tagName = 'passwordField'
         fieldImpl(out, attrs)
@@ -130,12 +157,18 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      *
      * @attr name REQUIRED the field name
      * @attr value the field value
+     * @param name required field name
+     * @param attrs optional tag attributes including value and additional HTML attributes
      */
-    Closure hiddenField = { attrs ->
+    def hiddenField(Map attrs) {
+        hiddenFieldTagImpl(attrs)
+    }
+
+    private void hiddenFieldTagImpl(Map attrs) {
         hiddenFieldImpl(out, attrs)
     }
 
-    def hiddenFieldImpl(out, attrs) {
+    private def hiddenFieldImpl(out, attrs) {
         attrs.type = 'hidden'
         attrs.tagName = 'hiddenField'
         fieldImpl(out, attrs)
@@ -150,8 +183,14 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr value the button text
      * @attr type input type; defaults to 'submit'
      * @attr event the webflow event id
+     * @param name required field name
+     * @param attrs optional tag attributes including value, type, event and additional HTML attributes
      */
-    Closure submitButton = { attrs ->
+    def submitButton(Map attrs) {
+        submitButtonImpl(attrs)
+    }
+
+    private void submitButtonImpl(Map attrs) {
         attrs.type = attrs.type ?: 'submit'
         attrs.tagName = 'submitButton'
         if (request.flowExecutionKey) {
@@ -168,13 +207,13 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      *
      * @attr type REQUIRED the input type
      */
-    Closure field = { attrs ->
+    def field(Map attrs) {
         attrs.tagName = 'field'
         fieldImpl(out, attrs)
     }
 
     @CompileStatic
-    def fieldImpl(GrailsPrintWriter out, Map attrs) {
+    private def fieldImpl(GrailsPrintWriter out, Map attrs) {
         resolveAttributes(attrs)
 
         attrs.value = processFormFieldValueIfNecessary(attrs.name, attrs.value, attrs.type)
@@ -206,7 +245,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr readonly if evaluates to true, sets to checkbox to read only
      * @attr id DOM element id; defaults to name
      */
-    Closure checkBox = { attrs ->
+    def checkBox(Map attrs) {
         def value = attrs.remove('value')
         def name = attrs.remove('name')
         def formName = attrs.get('form')
@@ -288,7 +327,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr escapeHtml if true escapes the text as HTML
      * @attr id DOM element id; defaults to name
      */
-    Closure textArea = { attrs, body ->
+    def textArea(Map attrs, Closure body) {
         resolveAttributes(attrs)
         // Pull out the value to use as content not attrib
         def value = attrs.remove('value')
@@ -338,7 +377,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
     /**
      * Check required attributes, set the id to name if no id supplied, extract bean values etc.
      */
-    void resolveAttributes(Map attrs) {
+    private void resolveAttributes(Map attrs) {
         if (!attrs.name && !attrs.field) {
             throwTagError("Tag [${attrs.tagName}] is missing required attribute [name] or [field]")
         }
@@ -366,7 +405,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * Dump out attributes in HTML compliant fashion.
      */
     @CompileStatic
-    void outputAttributes(Map attrs, GrailsPrintWriter writer, boolean useNameAsIdIfIdDoesNotExist = false) {
+    private void outputAttributes(Map attrs, GrailsPrintWriter writer, boolean useNameAsIdIfIdDoesNotExist = false) {
         attrs.remove('tagName') // Just in case one is left
         Encoder htmlEncoder = codecLookup?.lookupEncoder('HTML')
         attrs.each { k, v ->
@@ -393,9 +432,9 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr useToken Set whether to send a token in the request to handle duplicate form submissions. See Handling Duplicate Form Submissions
      * @attr method the form method to use, either 'POST' or 'GET'; defaults to 'POST'
      */
-    Closure uploadForm = { attrs, body ->
+    def uploadForm(Map attrs, Closure body) {
         attrs.enctype = 'multipart/form-data'
-        out << form(attrs, body)
+        form(attrs, body)
     }
 
     /**
@@ -412,7 +451,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr useToken Set whether to send a token in the request to handle duplicate form submissions. See Handling Duplicate Form Submissions
      * @attr method the form method to use, either 'POST' or 'GET'; defaults to 'POST'
      */
-    Closure form = { attrs, body ->
+    def form(Map attrs, Closure body) {
 
         boolean useToken = false
         if (attrs.containsKey('useToken')) {
@@ -471,6 +510,10 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
             hiddenFieldImpl(writer, [name: 'execution', value: request['flowExecutionKey']])
         }
 
+        // A browser submits only GET or POST, so any other method travels as this parameter - read by the
+        // servlet filter in one mode and by the dispatcher in the other. The POST route on a resources
+        // member URL is a fallback for clients that cannot send it, not a replacement: it reaches update
+        // alone, and covers neither a singular resource nor a URL an application mapped to PUT itself.
         if (notGet && httpMethod != HttpMethod.POST) {
             hiddenFieldImpl(writer, [name: '_method', value: httpMethod.toString()])
         }
@@ -509,78 +552,35 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
     }
 
     /**
-     * Creates a submit button that submits to an action in the controller specified by the form action.<br/>
-     * The name of the action attribute is translated into the action name, for example "Edit" becomes
-     * "_action_edit" or "List People" becomes "_action_listPeople".<br/>
-     * If the action attribute is not specified, the value attribute will be used as part of the action name.
-     *
-     * &lt;g:actionSubmit value="Edit" /&gt;<br/>
-     * &lt;g:actionSubmit action="Edit" value="Some label for editing" /&gt;<br/>
-     *
-     * @emptyTag
-     *
-     * @attr value REQUIRED The title of the button and name of action when not explicitly defined.
-     * @attr action The name of the action to be executed, otherwise it is derived from the value.
-     * @attr disabled Makes the button to be disabled. Will be interpreted as a Groovy Truth
-     * @deprecated As of 7.0.0, use {@link #formActionSubmit} instead
-     *
-     */
-    @Deprecated(since = '7.0.0')
-    Closure actionSubmit = { attrs ->
-        if (!attrs.value) {
-            throwTagError('Tag [actionSubmit] is missing required attribute [value]')
-        }
-
-        attrs.tagName = 'actionSubmit'
-
-        // Strip out any 'name' attribute, since this tag overrides it.
-        if (attrs.name) {
-            log.warn("[actionSubmit] 'name' attribute will be ignored")
-            attrs.remove('name')
-        }
-
-        // add action and value
-        def value = attrs.remove('value')
-        def action = attrs.remove('action') ?: value
-        // Change value if necessary in requestDataValueProcessor
-        value = processFormFieldValueIfNecessary("_action_${action}", value, 'submit')
-        booleanToAttribute(attrs, 'disabled')
-
-        out << "<input type=\"submit\" name=\"_action_${action}\" value=\"${value}\" "
-
-        // process remaining attributes
-        outputAttributes(attrs, out)
-
-        // close tag
-        out << '/>'
-    }
-
-    /**
      * Creates a submit button using the `formaction` attribute to submit to a different action than the form.
-     * The action will be generated by the various link attributes.<br/>
+     * The target URL is generated from the supported link attributes.<br/>
+     * The rendered `&lt;input&gt;` uses this tag's `id` attribute for its DOM id. If the generated URL needs an
+     * `id`, provide it through the `url` map.<br/>
      *
      * &lt;g:formActionSubmit action="myaction" value="Submit"/&gt;<br/>
      * &lt;g:formActionSubmit controller="myctrl" action="myaction" value="ButtonName"/&gt;<br/>
      *
-     * @attr id the id attribute of the formActionSubmit tag
-     * @attr value the button's show value
-     * @attr action The name of the action to use in the link, if not specified the default action will be linked
-     * @attr controller The name of the controller to use in the link, if not specified the current controller will be linked
-     * @attr namespace The namespace of the controller to use in the link
+     * @emptyTag
+     *
+     * @attr value REQUIRED The label shown on the submit button
+     * @attr id DOM id for the rendered input element
+     * @attr disabled Makes the button disabled. Will be interpreted as a Groovy Truth
+     * @attr action The name of the action to use in the generated link, if not specified the default action will be linked
+     * @attr controller The name of the controller to use in the generated link, if not specified the current controller will be linked
+     * @attr namespace The namespace of the controller to use in the generated link
      * @attr plugin The name of the plugin which provides the controller
-     * @attr id The id to use in the link
      * @attr fragment The link fragment (often called anchor tag) to use
      * @attr mapping The named URL mapping to use to rewrite the link
      * @attr method The HTTP method specified in the corresponding URL mapping
      * @attr params A map containing URL query parameters for the link
-     * @attr url A map containing the action, controller, id etc.
+     * @attr url A map containing the action, controller, id etc. for the generated link
      * @attr uri A string for a relative path in the running app.
      * @attr relativeUri Used to specify a uri relative to the current path.
      * @attr absolute If set to "true" will prefix the link target address with the value of the grails.serverURL property from Config, or http://localhost:&lt;port&gt; if no value in Config and not running in production.
      * @attr base Sets the prefix to be added to the link target address, typically an absolute server URL. This overrides the behaviour of the absolute property, if both are specified.
      * @attr event Webflow _eventId parameter
      */
-    def formActionSubmit = { Map attrs ->
+    def formActionSubmit(Map attrs) {
         if (!attrs.value) {
             throwTagError('Tag [formActionSubmit] is missing required attribute [value]')
         }
@@ -634,7 +634,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr src The source of the image to use
      * @attr disabled Makes the button to be disabled. Will be interpreted as a Groovy Truth
      */
-    Closure actionSubmitImage = { attrs ->
+    def actionSubmitImage(Map attrs) {
         attrs.tagName = 'actionSubmitImage'
 
         if (!attrs.value) {
@@ -683,7 +683,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr locale The locale to use for display formatting. Defaults to the current request locale and then the system default locale if not specified.
      * @attr selectDateClass css class added to each select tag
      */
-    Closure datePicker = { attrs ->
+    def datePicker(Map attrs) {
         def out = out // let x = x ?
         def xdefault = attrs['default']
         if (xdefault == null) {
@@ -939,11 +939,11 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
         }
     }
 
-    Closure renderNoSelectionOption = { noSelectionKey, noSelectionValue, value ->
+    private def renderNoSelectionOption(noSelectionKey, noSelectionValue, value) {
         renderNoSelectionOptionImpl(out, noSelectionKey, noSelectionValue, value)
     }
 
-    def renderNoSelectionOptionImpl(out, noSelectionKey, noSelectionValue, value) {
+    private def renderNoSelectionOptionImpl(out, noSelectionKey, noSelectionValue, value) {
         // If a label for the '--Please choose--' first item is supplied, write it out
         out << "<option value=\"${(noSelectionKey == null ? '' : noSelectionKey)}\"${noSelectionKey == value ? ' selected="selected"' : ''}>${noSelectionValue.encodeAsHTML()}</option>"
     }
@@ -958,7 +958,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr value An instance of java.util.TimeZone. Defaults to the time zone for the current Locale if not specified
      * @attr locale The locale to use for formatting the time zone names. Defaults to the current request locale and then system default locale if not specified
      */
-    Closure timeZoneSelect = { attrs ->
+    def timeZoneSelect(Map attrs) {
         attrs.from = TimeZone.getAvailableIDs()
         attrs.value = (attrs.value ? attrs.value.ID : TimeZone.getDefault().ID)
         def date = new Date()
@@ -978,30 +978,273 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
         }
 
         // use generic select
-        out << select(attrs)
+        select(attrs)
     }
 
     /**
-     * A helper tag for creating locale selects.<br/>
+     * A helper tag for locale selection.<br/>
      *
-     * eg. &lt;g:localeSelect name="myLocale" value="${locale}" /&gt;
+     * <p>With no body it renders a control: a native {@code <select>} by default, or a plain list of
+     * {@code <a>} links with {@code type="links"}. With a body it becomes an iterating tag &mdash; it
+     * resolves the locales once and renders the body for each, exposing a per-locale model under the
+     * {@code var} attribute so the caller supplies its own markup (a Bootstrap dropdown, a footer
+     * list, etc.). The model exposes: {@code locale}, {@code tag} (BCP&#8209;47), {@code code}
+     * ({@code language_COUNTRY}), {@code autonym} (the name in its own language, in CLDR's
+     * mid-sentence form), {@code menuName} (that same name titlecased for standalone display,
+     * per CLDR's uiListOrMenu context transform &mdash; what a language menu wants),
+     * {@code name} (the name in the display locale), {@code label}, {@code active} (matches the
+     * current locale), {@code default} (matches the configured default) and {@code index}.
      *
-     * @emptyTag
+     * eg. &lt;g:localeSelect name="myLocale" value="${locale}" labelType="autonym" /&gt;
      *
-     * @attr name REQUIRED The name of the select
-     * @attr value The set locale, defaults to the current request locale if not specified
-     * @attr locale The locale to use for formatting the locale names. Defaults to the current request locale and then the system default locale if not specified
+     * @attr name The name of the select (select mode)
+     * @attr value The selected locale, defaults to the current request locale if not specified
+     * @attr available If <code>true</code>, list only the locales the application is translated into
+     * (those with a <code>messages_*.properties</code> bundle, as published to the servlet context by
+     * the i18n plugin) instead of every locale the JVM knows about. Defaults to <code>false</code>.
+     * @attr type <code>select</code> (default), <code>links</code>, or <code>dropdown</code> for a
+     * ready-made Bootstrap navbar language menu needing no body. Ignored when a body is supplied.
+     * @attr labelType The option/link label: <code>autonym</code> (each locale in its own language),
+     * <code>name</code> (in the display locale), <code>both</code>, or omitted for the legacy
+     * <code>"language, [COUNTRY,] name"</code> label.
+     * @attr sort If <code>true</code>, order the locales by their label using a locale-independent collator.
+     * @attr tags If <code>true</code>, option/link keys are BCP&#8209;47 language tags (<code>en-US</code>)
+     * rather than the legacy <code>en_US</code> form.
+     * @attr pinDefault If <code>true</code> (body mode), the configured default locale is emitted first.
+     * @attr param The request parameter name used for <code>links</code>-mode hrefs. Defaults to <code>lang</code>.
+     * @attr var Enables body mode: the name of the per-locale model variable exposed to the body.
+     * Falls back to <code>type</code> when no body is actually supplied.
+     * @attr id <code>dropdown</code> only: id of the toggle, referenced by the menu's
+     * <code>aria-labelledby</code>. Defaults to <code>localeDropdown</code>.
+     * @attr navItemClass <code>dropdown</code> only: class of the wrapping <code>li</code>
+     * (default: <code>nav-item dropdown</code>).
+     * @attr toggleClass <code>dropdown</code> only: class of the toggle link
+     * (default: <code>nav-link dropdown-toggle</code>).
+     * @attr icon <code>dropdown</code> only: icon class rendered before the toggle label
+     * (default: <code>bi bi-globe me-1</code>). Pass an empty string for no icon.
+     * @attr menuClass <code>dropdown</code> only: class of the menu <code>ul</code>
+     * (default: <code>dropdown-menu dropdown-menu-end</code>).
+     * @attr itemClass <code>dropdown</code> only: class of each entry (default: <code>dropdown-item</code>).
+     * @attr activeClass <code>dropdown</code> only: class added to the current locale's entry
+     * (default: <code>active</code>).
+     * @attr dividerClass <code>dropdown</code> only: class of the rule after a pinned default
+     * (default: <code>dropdown-divider</code>).
      */
-    Closure localeSelect = { attrs ->
-        attrs.from = Locale.getAvailableLocales()
-        attrs.value = (attrs.value ?: RCU.getLocale(request))?.toString()
-        // set the key as a closure that formats the locale
-        attrs.optionKey = { it.country ? "${it.language}_${it.country}" : it.language }
-        // set the option value as a closure that formats the locale for display
-        attrs.optionValue = { it.country ? "${it.language}, ${it.country},  ${it.displayName}" : "${it.language}, ${it.displayName}" }
+    def localeSelect(Map attrs, Closure body) {
+        boolean availableOnly = Boolean.valueOf(attrs.remove('available')?.toString())
+        List locales
+        if (availableOnly) {
+            def published = request.servletContext?.getAttribute('availableLocales')
+            locales = published ? new ArrayList(published) : [RCU.getLocale(request)]
+        }
+        else {
+            locales = Locale.getAvailableLocales() as List
+        }
 
-        // use generic select
+        Locale current = RCU.getLocale(request)
+        def valueAttr = attrs.value
+        if (valueAttr instanceof Locale) {
+            current = valueAttr
+        }
+        else if (valueAttr) {
+            current = StringUtils.parseLocale(valueAttr.toString()) ?: current
+        }
+
+        boolean useTags = Boolean.valueOf(attrs.remove('tags')?.toString())
+        Closure label = localeLabel(attrs.remove('labelType'), current)
+
+        if (Boolean.valueOf(attrs.remove('sort')?.toString())) {
+            Collator collator = Collator.getInstance(Locale.ROOT)
+            locales = locales.sort(false) { a, b -> collator.compare(label(a).toString(), label(b).toString()) }
+        }
+
+        String varName = attrs.remove('var')
+        String type = (attrs.remove('type') ?: 'select').toString()
+        boolean pinDefault = Boolean.valueOf(attrs.remove('pinDefault')?.toString())
+        // A body stays optional even with var: GSP hands an absent body in as
+        // TagOutput.EMPTY_BODY_CLOSURE, and iterating over that would silently emit one
+        // empty string per locale, so fall through to the requested type instead.
+        boolean iterate = varName && body != null && body != TagOutput.EMPTY_BODY_CLOSURE
+
+        if (iterate || type == 'dropdown') {
+            Locale defaultLocale = configuredDefaultLocale()
+            // Lists can carry several country variants of one language with no bare-language
+            // entry (pt_BR/pt_PT, zh_CN/zh_TW), so active and default must each elect a
+            // SINGLE winner: the exact match, else the bare-language entry, else the first
+            // locale sharing the language. Pinning keeps the losing variants in the list.
+            Locale defaultEntry = singleWinner(locales, defaultLocale)
+            boolean pinned = pinDefault && defaultEntry != null
+            if (pinned) {
+                locales = [defaultEntry] + locales.findAll { !it.is(defaultEntry) }
+            }
+            Locale activeEntry = singleWinner(locales, current)
+
+            if (iterate) {
+                locales.eachWithIndex { locale, i ->
+                    out << body([(varName): [
+                            locale: locale,
+                            tag: locale.toLanguageTag(),
+                            code: localeKey(locale),
+                            autonym: locale.getDisplayName(locale),
+                            menuName: menuCase(locale.getDisplayName(locale), locale),
+                            name: locale.getDisplayName(current),
+                            label: label(locale),
+                            active: locale.is(activeEntry),
+                            'default': locale.is(defaultEntry),
+                            index: i
+                    ]])
+                }
+                return
+            }
+
+            renderLocaleDropdown(attrs, locales, current, activeEntry, pinned)
+            return
+        }
+
+        if (type == 'links') {
+            String param = attrs.remove('param') ?: 'lang'
+            attrs.remove('name')
+            def styleClass = attrs.remove('class')
+            String classAttr = styleClass ? " class=\"${styleClass.toString().encodeAsHTML()}\"" : ''
+            locales.each { locale ->
+                String key = useTags ? locale.toLanguageTag() : localeKey(locale)
+                out << "<a href=\"${localeHref(param, key).encodeAsHTML()}\"${classAttr}>${label(locale).toString().encodeAsHTML()}</a>"
+            }
+            return
+        }
+
+        // select mode
+        attrs.remove('param')
+        attrs.from = locales
+        attrs.value = useTags ? current.toLanguageTag() : localeKey(current)
+        attrs.optionKey = useTags ? { it.toLanguageTag() } : { localeKey(it) }
+        attrs.optionValue = label
         out << select(attrs)
+    }
+
+    private static String localeKey(Locale locale) {
+        locale.country ? "${locale.language}_${locale.country}" : locale.language
+    }
+
+    /**
+     * A query-only href that switches the language and keeps everything else.
+     *
+     * A bare {@code ?lang=de} replaces the whole query component, so a visitor changing
+     * language on {@code /books?page=2&sort=title} would land on {@code /books?lang=de}
+     * with the paging and sorting silently discarded. The current query string is carried
+     * over, with any existing value for this parameter dropped rather than duplicated.
+     *
+     * Reading {@code request.queryString} rather than {@code params} is deliberate: params
+     * also holds values bound from the URL path by the mappings (an {@code id} in
+     * {@code /book/show/5}) and the controller and action names, none of which belong in a
+     * query string. The path itself needs no handling, since a query-only href resolves
+     * against the current URL.
+     */
+    private String localeHref(String param, String key) {
+        StringBuilder href = new StringBuilder('?')
+        String queryString = request.queryString
+        if (queryString) {
+            queryString.tokenize('&').each { String pair ->
+                int eq = pair.indexOf('=')
+                String name = eq == -1 ? pair : pair.substring(0, eq)
+                if (URLDecoder.decode(name, 'UTF-8') == param) {
+                    return
+                }
+                if (href.length() > 1) {
+                    href << '&'
+                }
+                href << pair
+            }
+        }
+        if (href.length() > 1) {
+            href << '&'
+        }
+        href << URLEncoder.encode(param, 'UTF-8') << '=' << URLEncoder.encode(key, 'UTF-8')
+        href.toString()
+    }
+
+    /**
+     * CLDR stores a language name in its mid-sentence form, so languages that do not
+     * capitalize their own name yield "espa&ntilde;ol" or "&#1088;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;". A menu is not a
+     * sentence: CLDR's uiListOrMenu context transform calls for titlecase-firstword,
+     * which {@code Locale.getDisplayName} never applies. Uppercase with the locale's OWN
+     * casing rules rather than the JVM default, so Turkish and Azeri get the dotted
+     * &#304;; caseless scripts and already-capitalized names pass through unchanged.
+     */
+    private static String menuCase(String name, Locale locale) {
+        name ? name.substring(0, 1).toUpperCase(locale) + name.substring(1) : name
+    }
+
+    private void renderLocaleDropdown(Map attrs, List locales, Locale current, Locale activeEntry, boolean pinned) {
+        // A single-language application has nothing to switch between, so it should not
+        // carry a language menu at all. Callers get this for free instead of guarding.
+        if (locales.size() < 2) {
+            return
+        }
+
+        String param = attrs.param ?: 'lang'
+        String id = attrs.id ?: 'localeDropdown'
+        String navItemClass = attrs.navItemClass ?: localeSelectNavItemClass
+        String toggleClass = attrs.toggleClass ?: localeSelectToggleClass
+        // Distinguish "not supplied" from icon="" so the icon can be switched off.
+        String icon = attrs.icon != null ? attrs.icon.toString() : localeSelectToggleIcon
+        String menuClass = attrs.menuClass ?: localeSelectMenuClass
+        String itemClass = attrs.itemClass ?: localeSelectItemClass
+        String activeClass = attrs.activeClass ?: localeSelectActiveClass
+        String dividerClass = attrs.dividerClass ?: localeSelectDividerClass
+
+        out << "<li class=\"${navItemClass.encodeAsHTML()}\">"
+        out << "<a class=\"${toggleClass.encodeAsHTML()}\" href=\"#\" id=\"${id.encodeAsHTML()}\" " +
+                'role="button" data-bs-toggle="dropdown" aria-expanded="false">'
+        if (icon) {
+            out << "<i class=\"${icon.encodeAsHTML()}\"></i>"
+        }
+        out << menuCase(current.getDisplayName(current), current).encodeAsHTML()
+        out << '</a>'
+        out << "<ul class=\"${menuClass.encodeAsHTML()}\" aria-labelledby=\"${id.encodeAsHTML()}\">"
+        locales.eachWithIndex { locale, i ->
+            // The pinned default stands alone above the divider, so a visitor who switched
+            // to a language they cannot read always has a recognizable way back at the top.
+            if (pinned && i == 1) {
+                out << "<li><hr class=\"${dividerClass.encodeAsHTML()}\"></li>"
+            }
+            String cssClass = locale.is(activeEntry) ? "${itemClass} ${activeClass}" : itemClass
+            out << "<li><a class=\"${cssClass.encodeAsHTML()}\" " +
+                    "href=\"${localeHref(param, locale.toLanguageTag()).encodeAsHTML()}\">" +
+                    "${menuCase(locale.getDisplayName(locale), locale).encodeAsHTML()}</a></li>"
+        }
+        out << '</ul></li>'
+    }
+
+    private static Locale singleWinner(List locales, Locale wanted) {
+        locales.find { it.language == wanted.language && it.country == wanted.country } ?:
+                locales.find { it.language == wanted.language && !it.country } ?:
+                locales.find { it.language == wanted.language }
+    }
+
+    private Closure localeLabel(labelType, Locale display) {
+        switch (labelType) {
+            case 'autonym':
+                return { Locale locale -> locale.getDisplayName(locale) }
+            case 'name':
+                return { Locale locale -> locale.getDisplayName(display) }
+            case 'both':
+                return { Locale locale ->
+                    String autonym = locale.getDisplayName(locale)
+                    String name = locale.getDisplayName(display)
+                    autonym == name ? autonym : "${autonym} — ${name}"
+                }
+            default:
+                return { Locale locale ->
+                    locale.country ? "${locale.language}, ${locale.country},  ${locale.displayName}" : "${locale.language}, ${locale.displayName}"
+                }
+        }
+    }
+
+    private Locale configuredDefaultLocale() {
+        def configured = grailsApplication?.config?.getProperty('grails.i18n.default.locale') ?:
+                grailsApplication?.config?.getProperty('spring.web.locale')
+        (configured ? StringUtils.parseLocale(configured.toString()) : null) ?: Locale.ENGLISH
     }
 
     /**
@@ -1014,7 +1257,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr from The currency symbols to select from, defaults to the major ones if not specified
      * @attr value The currency value as the currency code. Defaults to the currency for the current Locale if not specified
      */
-    Closure currencySelect = { attrs, body ->
+    def currencySelect(Map attrs, Closure body) {
         if (!attrs.from) {
             attrs.from = DEFAULT_CURRENCY_CODES
         }
@@ -1053,7 +1296,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr dataAttrs a Map that adds data-* attributes to the &lt;option&gt; elements. Map's keys will be used as names of the data-* attributes like so: data-${key} (i.e. with a "data-" prefix). The object belonging to a Map's key determines the value of the data-* attribute. It can be a string referring to a property of beans in {@code from}, a Closure that accepts an item from {@code from} and returns the value or a List that contains a value for each of the &lt;option&gt;s.
      * @attr locale The locale to use for formatting. Defaults to the current request locale and then the system default locale if not specified
      */
-    Closure select = { attrs ->
+    def select(Map attrs) {
         if (!attrs.name) {
             throwTagError('Tag [select] is missing required attribute [name]')
         }
@@ -1207,8 +1450,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
                 value = conversionService.convert(value, keyClass)
                 selected = keyValue == value
             }
-            catch (e) {
-                // ignore
+            catch (ignored) {
             }
         }
         keyValue = processFormFieldValueIfNecessary(selectName, "${keyValue}", 'option')
@@ -1257,7 +1499,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr readonly boolean to indicate that the radio button should not be editable
      * @attr id the DOM element id
      */
-    Closure radio = { attrs ->
+    def radio(Map attrs) {
         def value = attrs.remove('value')
         def name = attrs.remove('name')
         booleanToAttribute(attrs, 'disabled')
@@ -1286,7 +1528,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
      * @attr disabled Disables the resulting radio buttons.
      * @attr readonly Makes the resulting radio buttons to not be editable
      */
-    Closure radioGroup = { attrs, body ->
+    def radioGroup(Map attrs, Closure body) {
         def value = attrs.remove('value')
         def values = attrs.remove('values')
         def labels = attrs.remove('labels')
@@ -1318,7 +1560,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
         }
     }
 
-    private processFormFieldValueIfNecessary(name, value, type) {
+    private def processFormFieldValueIfNecessary(name, value, type) {
         if (requestDataValueProcessor != null) {
             return requestDataValueProcessor.processFormFieldValue(request, name, "${value}", type)
         }
@@ -1328,7 +1570,7 @@ class FormTagLib implements ApplicationContextAware, InitializingBean, TagLibrar
     /**
      * Filters the url through the RequestDataValueProcessor bean if it is registered.
      */
-    String processedUrl(String link, request) {
+    private String processedUrl(String link, request) {
         if (requestDataValueProcessor == null) {
             return link
         }

@@ -96,13 +96,17 @@ abstract class AbstractHibernateGormStaticApi<D> extends GormStaticApi<D> {
     @Override
     <T> T withNewSession(Closure<T> callable) {
         AbstractHibernateDatastore hibernateDatastore = (AbstractHibernateDatastore) datastore
-        hibernateDatastore.withNewSession(callable)
+        inConnectionScope {
+            hibernateDatastore.withNewSession(callable)
+        }
     }
 
     @Override
     def <T> T withSession(Closure<T> callable) {
         AbstractHibernateDatastore hibernateDatastore = (AbstractHibernateDatastore) datastore
-        hibernateDatastore.withSession(callable)
+        inConnectionScope {
+            hibernateDatastore.withSession(callable)
+        }
     }
 
     @Override
@@ -196,10 +200,10 @@ abstract class AbstractHibernateGormStaticApi<D> extends GormStaticApi<D> {
     }
 
     @Override
-    Integer count() {
-        (Integer) hibernateTemplate.execute({ Session session ->
+    Long count() {
+        (Long) hibernateTemplate.execute({ Session session ->
             CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder()
-            CriteriaQuery criteriaQuery = criteriaBuilder.createQuery(persistentEntity.javaClass)
+            CriteriaQuery<Long> criteriaQuery = criteriaBuilder.createQuery(Long)
             criteriaQuery.select(criteriaBuilder.count(criteriaQuery.from(persistentEntity.javaClass)))
             Query criteria = session.createQuery(criteriaQuery)
             HibernateHqlQuery hibernateHqlQuery = new HibernateHqlQuery(
@@ -211,7 +215,7 @@ abstract class AbstractHibernateGormStaticApi<D> extends GormStaticApi<D> {
             }
             hibernateTemplate.applySettings(criteria)
             def result = hibernateHqlQuery.singleResult()
-            Number num = result == null ? 0 : (Number)result
+            Number num = result == null ? 0L : (Number)result
             return num
         })
     }
@@ -238,21 +242,21 @@ abstract class AbstractHibernateGormStaticApi<D> extends GormStaticApi<D> {
         id = convertIdentifier(id)
         hibernateTemplate.execute  { Session session ->
             CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder()
-            CriteriaQuery criteriaQuery = criteriaBuilder.createQuery(persistentEntity.javaClass)
+            CriteriaQuery<Long> criteriaQuery = criteriaBuilder.createQuery(Long)
             Root queryRoot = criteriaQuery.from(persistentEntity.javaClass)
             def idProp = queryRoot.get(persistentEntity.identity.name)
             criteriaQuery = criteriaQuery.where(
                     //TODO: Remove explicit type cast once GROOVY-9460
                     criteriaBuilder.equal((Expression<?>) idProp, id)
             )
-            criteriaQuery.select(criteriaBuilder.count(criteriaQuery.from(persistentEntity.javaClass)))
+            criteriaQuery.select(criteriaBuilder.count(queryRoot))
             Query criteria = session.createQuery(criteriaQuery)
             HibernateHqlQuery hibernateHqlQuery = new HibernateHqlQuery(
                     hibernateSession, persistentEntity, criteria)
 
             hibernateTemplate.applySettings(criteria)
-            Boolean result = hibernateHqlQuery.singleResult()
-            return result
+            Number result = (Number) hibernateHqlQuery.singleResult()
+            return result > 0
         }
     }
 

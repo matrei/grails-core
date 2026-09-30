@@ -16,43 +16,39 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
-
 package com.example
 
 import com.example.pages.LoginPage
+import com.example.pages.LogoutPage
+import com.example.pages.CommunityUserListPage
 
+import grails.plugin.geb.ContainerGebConfiguration
 import grails.plugin.geb.ContainerGebSpec
 import grails.testing.mixin.integration.Integration
 
-@Integration(applicationClass = Application)
+@Integration
+@ContainerGebConfiguration(reporting = true)
 class UserCommunityControllerSpec extends ContainerGebSpec {
 
     void setup() {
-        go '/'
-        to LoginPage
-        username = 'test@grails.org'
-        password = 'letmein'
-        loginButton.click()
+        clearCookiesQuietly()
     }
 
     void cleanup() {
         try {
-            go 'logout'
-            $('input', value: 'Log Out').click()
-        }
-        catch (ignored) {
-            // ignored
+            to(LogoutPage).logout()
+        } catch (Exception ignore) {
+            // ignore any exceptions that occur during logout
         }
     }
 
     void "User list"() {
-        when:
-        go 'community/user/index'
+        when: 'an unauthenticated user requests the community user list and signs in when prompted'
+        via(CommunityUserListPage)
+        at(LoginPage).login()
 
-        then:
-        title == 'User List'
-
-        and:
-        !$('table.scaffold')
+        then: 'the saved request redirects to the community user list'
+        def page = at(CommunityUserListPage)
+        !page.scaffoldTable
     }
 }

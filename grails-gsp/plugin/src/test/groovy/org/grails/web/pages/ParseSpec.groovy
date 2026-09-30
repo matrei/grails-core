@@ -52,7 +52,7 @@ protected void init() {
 \tthis.jspTags = JSP_TAGS
 }
 public static final String CONTENT_TYPE = 'text/html;charset=UTF-8'
-public static final long LAST_MODIFIED = 0L
+public static final String SOURCE_CHECKSUM = null
 public static final String EXPRESSION_CODEC = 'HTML'
 public static final String STATIC_CODEC = 'none'
 public static final String OUT_CODEC = 'none'
@@ -272,6 +272,37 @@ public static final String TAGLIB_CODEC = 'none'
 
         then:
         trimAndRemoveCR(expected) == trimAndRemoveCR(result.generatedGsp)
+    }
+
+    void 'parse with JSP declaration block throws error'() {
+        when:
+        parseCode('declTest1', '<%! int counter = 0; %>')
+
+        then:
+        def e = thrown(GrailsTagException)
+        e.message.contains('declaration blocks')
+        e.message.contains('<%! ... %>')
+        e.message.contains('not supported')
+    }
+
+    void 'parse with JSP declaration block containing method throws error'() {
+        when:
+        parseCode('declTest2', '<html><%! String hello() { return "hi"; } %></html>')
+
+        then:
+        def e = thrown(GrailsTagException)
+        e.message.contains('<%! ... %>')
+    }
+
+    void 'parse with Groovy declaration block throws error'() {
+        when:
+        parseCode('declTest3', '!{ int counter = 0; }!')
+
+        then:
+        def e = thrown(GrailsTagException)
+        e.message.contains('declaration blocks')
+        e.message.contains('!{ ... }!')
+        e.message.contains('not supported')
     }
 
     static ParsedResult parseCode(String uri, String gsp) throws IOException {

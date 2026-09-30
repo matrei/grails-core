@@ -24,11 +24,17 @@ import org.grails.datastore.mapping.config.Settings
 import org.grails.datastore.mapping.multitenancy.exceptions.TenantNotFoundException
 import org.grails.datastore.mapping.multitenancy.resolvers.SystemPropertyTenantResolver
 import org.grails.testing.GrailsUnitTest
+import spock.util.environment.RestoreSystemProperties
 
 /**
  * Created by graemerocher on 06/04/2017.
  */
+@RestoreSystemProperties
 class SchemaPerTenantSpec extends HibernateSpec implements GrailsUnitTest {
+
+    @Override
+    List<Class> getDomainClasses() { [Book] }
+
 
     BookService bookDataService = hibernateDatastore.getService(BookService)
 
@@ -47,9 +53,6 @@ class SchemaPerTenantSpec extends HibernateSpec implements GrailsUnitTest {
         }
         hibernateDatastore.addTenantForSchema("moreBooks")
         hibernateDatastore.addTenantForSchema("evenMoreBooks")
-    }
-    def cleanup() {
-        System.setProperty(SystemPropertyTenantResolver.PROPERTY_NAME, "")
     }
 
     @Rollback("moreBooks")

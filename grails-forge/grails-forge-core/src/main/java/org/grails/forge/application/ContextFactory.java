@@ -19,7 +19,9 @@
 package org.grails.forge.application;
 
 import io.micronaut.core.annotation.Nullable;
+
 import jakarta.inject.Singleton;
+
 import org.grails.forge.application.generator.GeneratorContext;
 import org.grails.forge.build.dependencies.DefaultCoordinateResolver;
 import org.grails.forge.feature.AvailableFeatures;
@@ -53,7 +55,7 @@ public class ContextFactory {
                                                Options options,
                                                @Nullable OperatingSystem operatingSystem) {
         final Set<Feature> features = Collections.newSetFromMap(new IdentityHashMap<>(8));
-        for (String name: selectedFeatures) {
+        for (String name : selectedFeatures) {
             Feature feature = availableFeatures.findFeature(name).orElse(null);
             if (feature != null) {
                 features.add(feature);
@@ -63,14 +65,14 @@ public class ContextFactory {
         }
 
         Options newOptions = options
-                .withTestFramework(determineTestFramework(options.getTestFramework()))
-                .withGormImpl(determineGormImpl(options.getGormImpl()))
-                .withServletImpl(determineServletImpl(options.getServletImpl()));
+            .withDevelopmentReloading(determineDevelopmentReloading(options.getDevelopmentReloading()))
+            .withGormImpl(determineGormImpl(options.getGormImpl()))
+            .withServletImpl(determineServletImpl(options.getServletImpl()));
 
         availableFeatures.getAllFeatures()
-                .filter(f -> f instanceof DefaultFeature)
-                .filter(f -> ((DefaultFeature) f).shouldApply(applicationType, newOptions, features))
-                .forEach(features::add);
+            .filter(f -> f instanceof DefaultFeature)
+            .filter(f -> ((DefaultFeature) f).shouldApply(applicationType, newOptions, features))
+            .forEach(features::add);
 
         featureValidator.validatePreProcessing(newOptions, applicationType, features);
 
@@ -89,11 +91,11 @@ public class ContextFactory {
         return new GeneratorContext(project, featureContext.getApplicationType(), featureContext.getOptions(), featureContext.getOperatingSystem(), featureList, coordinateResolver);
     }
 
-    TestFramework determineTestFramework(TestFramework testFramework) {
-        if (testFramework == null) {
-            testFramework = TestFramework.DEFAULT_OPTION;
+    DevelopmentReloading determineDevelopmentReloading(DevelopmentReloading reloading) {
+        if (reloading == null) {
+            reloading = DevelopmentReloading.DEFAULT_OPTION;
         }
-        return testFramework;
+        return reloading;
     }
 
     Language determineLanguage(Language language, Set<Feature> features) {

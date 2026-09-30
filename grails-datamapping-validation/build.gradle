@@ -21,10 +21,13 @@ plugins {
     id 'groovy'
     id 'java-library'
     id 'org.apache.grails.buildsrc.properties'
+    id 'org.apache.grails.buildsrc.dependency-validator'
     id 'org.apache.grails.buildsrc.compile'
     id 'org.apache.grails.buildsrc.publish'
     id 'org.apache.grails.buildsrc.sbom'
+    id 'org.apache.grails.buildsrc.vulnerability-scan'
     id 'org.apache.grails.gradle.grails-code-style'
+    id 'org.apache.grails.gradle.grails-jacoco'
 }
 
 version = projectVersion
@@ -54,7 +57,6 @@ dependencies {
     }
 
     api "commons-validator:commons-validator:$commonsValidatorVersion", { // Candidate for grails-bom?
-        exclude group: 'xml-apis', module:'xml-apis'
         exclude group: 'commons-digester', module:'commons-digester'
         exclude group: 'commons-logging', module:'commons-logging'
         exclude group: 'commons-beanutils', module:'commons-beanutils'

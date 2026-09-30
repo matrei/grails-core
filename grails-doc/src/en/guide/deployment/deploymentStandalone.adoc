@@ -17,168 +17,77 @@ specific language governing permissions and limitations
 under the License.
 ////
 
+A standalone application runs with an embedded servlet container. The deployment host needs a compatible Java runtime, but does not need Grails or Gradle installed.
 
+== Build and run an executable archive
 
-=== "grails run-app"
-
-
-You should be very familiar with this approach by now, since it is the most common method of running an application during the development phase. An embedded Tomcat server is launched that loads the web application from the development sources, thus allowing it to pick up any changes to application files.
-
-You can run the application in the production environment using:
-
-[source,groovy]
-----
-grails prod run-app
-----
-
-You can run the app using the `bootRun` Gradle task. The next command uses the https://docs.gradle.org/current/userguide/gradle_wrapper.html[Gradle Wrapper].
-
-`./gradlew bootRun`
-
-You can specify an environment supplying `grails.env` system property.
-
-`./gradlew -Dgrails.env=prod bootRun`
-
-=== Runnable WAR or JAR file
-
-Another way to deploy in Grails 3.0 or above is to use the new support for runnable JAR or WAR files. To create runnable archives, run `grails package`:
-
-[source,xml]
-----
-grails package
-----
-
-Alternatively, you could use the `assemble` Gradle task.
-
-`./gradlew assemble`
-
-You can then run either the WAR file or the JAR using your Java installation:
-
-[source,groovy]
-----
-java -Dgrails.env=prod -jar build/libs/mywar-0.1.war    (or .jar)
-----
-
-=== A TAR/ZIP distribution
-
-WARNING: Note: TAR/ZIP distribution assembly has been removed from Grails 3.1.
-
-
-=== Advanced Container Deployment with Layered Builds
-
-For production deployments in containerized environments, Grails applications can leverage Spring Boot's layered JAR functionality. This approach separates the application into distinct layers (dependencies, snapshots, and application code), optimizing Docker image builds and storage.
-
-==== Creating Layered JARs
-
-To create a layered executable JAR, configure your `build.gradle`:
-
-[source,gradle]
-----
-bootJar {
-    enabled = true
-    archiveClassifier = 'exec'
-    layered {
-        enabled = true
-    }
-}
-
-jar {
-    enabled = true
-    archiveClassifier = 'plain'
-}
-----
-
-==== Building Optimized Docker Images
-
-Once you have a layered JAR, you can create an optimized Docker image using the extracted layers:
-
-[source,Dockerfile]
-----
-FROM eclipse-temurin:17-jre-jammy
-
-VOLUME /tmp
-
-ARG DEPENDENCY=target/dependency
-COPY ${DEPENDENCY}/BOOT-INF/lib /app/lib
-COPY ${DEPENDENCY}/META-INF /app/META-INF
-COPY ${DEPENDENCY}/BOOT-INF/classes /app
-
-ENTRYPOINT ["java","-cp","app:app/lib/*","example.Application"]
-----
-
-To prepare the layers for Docker:
+Build an executable JAR with the application's Gradle Wrapper:
 
 [source,bash]
 ----
-grails package
-java -Djarmode=layertools -jar build/libs/myapp-*-exec.jar extract
+./gradlew clean check bootJar
+java -Dgrails.env=prod -jar build/libs/myapp-0.1.jar
 ----
 
-==== Benefits of Layered Builds
+Replace `myapp-0.1.jar` with the actual `bootJar` output. A plain JAR (usually named `*-plain.jar`) does not contain the embedded server and dependencies required by `java -jar`.
+Use an exact filename in deployment scripts; `build/libs/*.jar` can match plain archives or artifacts from earlier builds.
+`check` runs the verification tasks configured by your application; include any separately configured integration or functional test jobs in your release pipeline as well.
 
-* **Reduced image sizes**: Only changed layers need to be rebuilt
-* **Faster deployments**: Docker layer caching improves build times
-* **Optimized storage**: Shared layers across applications reduce total storage requirements
-
-==== Production Deployment Commands
-
-For production deployments, consider using these optimized approaches:
+Grails packaging defaults to the production environment unless it is overridden at build time. The explicit `-Dgrails.env=prod` above also selects production at runtime.
+JVM options, including `-D` properties and memory settings, go before `-jar`; Spring Boot application arguments go after the archive name:
 
 [source,bash]
 ----
-# Create layered JAR for container deployment
-grails package
-
-# Run with specific memory settings
-java -server -Xmx768M -Dgrails.env=prod -jar build/libs/myapp-*-exec.jar
-
-# Or with specific JVM options for container environments
-java -XX:+UseContainerSupport \
-     -XX:MaxRAMPercentage=75.0 \
-     -Dgrails.env=prod \
-     -jar build/libs/myapp-*-exec.jar
+java -Xmx768m -Dgrails.env=prod -jar build/libs/myapp-0.1.jar \
+    --server.port=8081 \
+    --spring.config.additional-location=file:/etc/myapp/
 ----
 
-=== "./gradlew bootRun"
+This example requires `/etc/myapp/` to exist. Place external `application.yml` or `application.properties` there.
+Size the heap for your workload and leave memory for metaspace, thread stacks, direct buffers, native libraries, and the operating system.
 
+If the application applies the Gradle `war` plugin, it can instead produce an executable WAR:
 
-You should be very familiar with this approach by now, since it is the most common method of running an application during the development phase. An embedded Tomcat server is launched that loads the web application from the development sources, thus allowing it to pick up any changes to application files.
-
-You can run the application in the production environment using:
-
-[source,groovy]
+[source,bash]
 ----
-./gradlew bootRun -Dgrails.env=prod
-----
-
-You can run the app using the `bootRun` Gradle task. The next command uses the https://docs.gradle.org/current/userguide/gradle_wrapper.html[Gradle Wrapper].
-
-`./gradlew bootRun`
-
-You can specify an environment supplying `grails.env` system property. 
-
-`./gradlew -Dgrails.env=prod bootRun`
-
-=== Runnable WAR or JAR file
-
-Another way to deploy in Grails 3.0 or above is to use the new support for runnable JAR or WAR files. To create runnable archives, run `grails package`:
-
-[source,xml]
-----
-grails package
+./gradlew clean check bootWar
+java -Dgrails.env=prod -jar build/libs/myapp-0.1.war
 ----
 
-Alternatively, you could use the `assemble` Gradle task.
+See <<deploymentContainer,external servlet deployment>> for configuring the embedded container dependencies so the same WAR can also be deployed to Tomcat.
 
-`./gradlew assemble`
+== Run as a managed service
 
-You can then run either the WAR file or the JAR using your Java installation:
+Use a service manager such as systemd to start the JVM on boot, restart failed processes, and collect logs.
+For example, after creating an unprivileged `myapp` account and installing the tested JAR at `/opt/myapp/application.jar`, a Linux service unit can contain:
 
-[source,groovy]
+[source,ini]
 ----
-java -Dgrails.env=prod -jar build/libs/mywar-0.1.war    (or .jar)
+[Unit]
+Description=My Grails application
+After=network.target
+
+[Service]
+User=myapp
+Group=myapp
+WorkingDirectory=/opt/myapp
+ExecStart=/usr/bin/java -Dgrails.env=prod -jar /opt/myapp/application.jar --spring.config.additional-location=file:/etc/myapp/
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=60s
+SuccessExitStatus=143
+NoNewPrivileges=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
 ----
 
-=== A TAR/ZIP distribution
+Adjust the Java path and stop timeout for your host and application. The service account needs read access to the archive and configuration, and write access only to required temporary or application data directories.
+Keep the JVM in the foreground so the service manager receives its exit status and can send `SIGTERM` for <<deploymentTasks,graceful shutdown>>.
 
-WARNING: Note: TAR/ZIP distribution assembly has been removed from Grails 3.1.
+== Development commands
+
+`./gradlew bootRun` and `grails run-app` run an application from its development build. They are useful for local work, including checking production configuration with `./gradlew -Dgrails.env=prod bootRun`.
+For a production service, deploy and smoke-test the packaged archive rather than keeping a Gradle process and source checkout on the host.
+For container images built from that archive, see <<deploymentLayeredBuilds,OCI images and layered builds>>.
