@@ -22,7 +22,6 @@ import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 
 import javassist.util.proxy.ProxyFactory
-import org.jspecify.annotations.Nullable
 
 import grails.artefact.Controller
 import grails.testing.web.GrailsWebUnitTest
@@ -63,10 +62,10 @@ trait ControllerUnitTest<T> implements ParameterizedGrailsUnitTest<T>, GrailsWeb
     }
 
     /**
-     * @return The view of the current controller
+     * @return The view of the current controller, or {@code null} if neither a view nor a controller and action is set
      */
     @CompileDynamic
-    @Nullable String getView() {
+    String getView() {
         def controller = request.getAttribute(GrailsApplicationAttributes.CONTROLLER)
         def viewName = controller?.modelAndView?.viewName
         if (viewName != null) {

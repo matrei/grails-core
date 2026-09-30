@@ -110,6 +110,11 @@ class ControllerUnitTestMixinTests extends Specification implements ControllerUn
         "/test/foo" == view
     }
 
+    void 'view is null before an action is invoked'() {
+        expect:
+        view == null
+    }
+
     void testRenderXml() {
         when:
         controller.renderXml()

@@ -23,8 +23,6 @@ import java.lang.reflect.ParameterizedType
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 
-import org.jspecify.annotations.Nullable
-
 import org.springframework.web.servlet.ModelAndView
 
 import grails.artefact.Interceptor
@@ -67,9 +65,9 @@ trait InterceptorUnitTest<T> implements ParameterizedGrailsUnitTest<T>, GrailsWe
      *
      * @param arguments The arguments
      * @param callable A callable containing an invocation of a controller action
-     * @return The result of the callable execution
+     * @return The result of the callable execution, or {@code null} if an interceptor stops the request or an exception is thrown
      */
-    @Nullable Object withInterceptors(Map<String, Object> arguments, Closure callable) {
+    Object withInterceptors(Map<String, Object> arguments, Closure callable) {
         ensureInterceptorHasBeenMocked()
         def urlMappingInfo = withRequest(arguments)
         def handlerInterceptor = getHandlerInterceptor()

@@ -23,7 +23,6 @@ import groovy.transform.CompileStatic
 
 import junit.framework.AssertionFailedError
 import junit.framework.ComparisonFailure
-import org.jspecify.annotations.Nullable
 
 import grails.artefact.Controller
 import grails.core.DefaultGrailsApplication
@@ -103,7 +102,7 @@ trait UrlMappingsUnitTest<T> implements ParameterizedGrailsUnitTest<T>, GrailsWe
      * @param uri The URI to map
      * @return The controller instance or null if no mapping was found
      */
-    @Nullable Controller mapURI(String uri) {
+    Controller mapURI(String uri) {
         def mappingsHolder = getUrlMappingsHolder()
         def mappingInfos = mappingsHolder.matchAll(uri, request.method)
         for (def info : mappingInfos) {
@@ -232,7 +231,7 @@ trait UrlMappingsUnitTest<T> implements ParameterizedGrailsUnitTest<T>, GrailsWe
      */
     void assertUrlMapping(Map<String, String> assertions, String url, Closure paramAssertions = null) {
         assertForwardUrlMapping(assertions as Map<String, Object>, url, paramAssertions)
-        if (assertions.controller && !(url instanceof Integer)) {
+        if (assertions.controller) {
             assertReverseUrlMapping(assertions, url, paramAssertions)
         }
     }
@@ -256,7 +255,7 @@ trait UrlMappingsUnitTest<T> implements ParameterizedGrailsUnitTest<T>, GrailsWe
      */
     boolean verifyUrlMapping(Map<String, String> assertions, String url, Closure paramAssertions = null) {
         boolean returnValue = verifyForwardUrlMapping(assertions as Map<String, Object>, url, paramAssertions)
-        if (assertions.controller && !(url instanceof Integer)) {
+        if (assertions.controller) {
             returnValue = returnValue && verifyReverseUrlMapping(assertions, url, paramAssertions)
         }
         returnValue

@@ -60,11 +60,50 @@ class InterceptorUnitTestMixinSpec extends Specification implements InterceptorU
         then:"The interceptor does match"
         !interceptor.doesMatch()
     }
+
+    void 'withInterceptors returns the result of the callable'() {
+        expect:
+        withInterceptors(controller: 'foo', action: 'bar') { 'result' } == 'result'
+    }
+
+    void 'withInterceptors returns null when the callable throws an exception'() {
+        expect:
+        withInterceptors(controller: 'foo', action: 'bar') { throw new IllegalStateException() } == null
+    }
+}
+
+class StoppingInterceptorUnitTestSpec extends Specification implements InterceptorUnitTest<StoppingInterceptor> {
+
+    void 'withInterceptors returns null when an interceptor stops the request'() {
+        given:
+        def called = false
+
+        when:
+        def result = withInterceptors(controller: 'foo', action: 'bar') {
+            called = true
+            'result'
+        }
+
+        then:
+        result == null
+        !called
+    }
 }
 
 class TestInterceptor implements Interceptor {
     TestInterceptor() {
         match(controller:"foo", action:"bar")
+    }
+}
+
+class StoppingInterceptor implements Interceptor {
+
+    StoppingInterceptor() {
+        match(controller: 'foo')
+    }
+
+    boolean before() {
+        false
     }
 }
 
