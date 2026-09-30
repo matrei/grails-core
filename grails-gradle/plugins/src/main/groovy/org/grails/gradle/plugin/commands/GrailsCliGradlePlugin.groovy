@@ -22,6 +22,7 @@ import java.util.jar.JarFile
 
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 
 import org.gradle.api.GradleException
 import org.gradle.api.NamedDomainObjectProvider
@@ -368,12 +369,14 @@ class GrailsCliGradlePlugin implements Plugin<Project> {
      * @param taskName the name of the task that requires the main class
      * @return the name of the main class
      */
+    @PackageScope
     static String requireMainClass(Provider<String> mainClass, String taskName) {
-        if (!mainClass.present) {
+        def mainClassName = mainClass.orNull
+        if (!mainClassName) {
             throw new GradleException("The '${taskName}' task requires an application class with a main method, but none was found. " +
                     "Add an Application class, or set 'springBoot.mainClass' if the project already has one.")
         }
-        mainClass.get()
+        mainClassName
     }
 
     @CompileDynamic
