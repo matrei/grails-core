@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -69,6 +70,7 @@ public class PluginAwareResourceBundleMessageSource extends ReloadableResourceBu
     private long pluginCacheMillis = Long.MIN_VALUE;
     private boolean searchClasspath = false;
     private String messageBundleLocationPattern = "classpath*:*.properties";
+    private String[] configuredBasenames = new String[0];
 
     public PluginAwareResourceBundleMessageSource() {
     }
@@ -88,6 +90,19 @@ public class PluginAwareResourceBundleMessageSource extends ReloadableResourceBu
 
     public void setResourceResolver(PathMatchingResourcePatternResolver resourceResolver) {
         this.resourceResolver = resourceResolver;
+    }
+
+    /**
+     * Sets the basenames to resolve messages from. The bundles are checked in the given order, and
+     * they stay ahead of the bundles discovered in {@code grails-app/i18n} once
+     * {@link #afterPropertiesSet()} has run.
+     *
+     * @param basenames the basenames configured on the bean
+     */
+    @Override
+    public void setBasenames(String... basenames) {
+        configuredBasenames = basenames != null ? basenames.clone() : new String[0];
+        super.setBasenames(basenames);
     }
 
     public void afterPropertiesSet() throws Exception {
@@ -152,8 +167,21 @@ public class PluginAwareResourceBundleMessageSource extends ReloadableResourceBu
                 basenames.add(baseName);
         }
 
-        setBasenames(basenames.toArray(new String[basenames.size()]));
+        super.setBasenames(mergeBasenames(basenames));
+    }
 
+    /**
+     * Places the basenames configured on the bean first, in the order they were given, followed by
+     * the discovered basenames that were not already listed. Resolution is first match wins, so this
+     * is what lets an explicitly configured bundle override keys from the discovered ones.
+     */
+    private String[] mergeBasenames(List<String> discoveredBasenames) {
+        LinkedHashSet<String> merged = new LinkedHashSet<>();
+        for (String basename : configuredBasenames) {
+            merged.add(basename.trim());
+        }
+        merged.addAll(discoveredBasenames);
+        return merged.toArray(new String[0]);
     }
 
     @Override
