@@ -18,8 +18,11 @@
  */
 package org.grails.datastore.gorm.query.transform;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -35,12 +38,14 @@ import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.DynamicVariable;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.expr.ArgumentListExpression;
 import org.codehaus.groovy.ast.expr.BinaryExpression;
 import org.codehaus.groovy.ast.expr.CastExpression;
 import org.codehaus.groovy.ast.expr.ClassExpression;
+import org.codehaus.groovy.ast.expr.ClosureExpression;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.expr.DeclarationExpression;
 import org.codehaus.groovy.ast.expr.Expression;
@@ -51,7 +56,20 @@ import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.StaticMethodCallExpression;
 import org.codehaus.groovy.ast.expr.TernaryExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
+import org.codehaus.groovy.ast.stmt.BlockStatement;
+import org.codehaus.groovy.ast.stmt.BreakStatement;
+import org.codehaus.groovy.ast.stmt.CaseStatement;
+import org.codehaus.groovy.ast.stmt.CatchStatement;
+import org.codehaus.groovy.ast.stmt.ContinueStatement;
+import org.codehaus.groovy.ast.stmt.DoWhileStatement;
+import org.codehaus.groovy.ast.stmt.ForStatement;
 import org.codehaus.groovy.ast.stmt.IfStatement;
+import org.codehaus.groovy.ast.stmt.ReturnStatement;
+import org.codehaus.groovy.ast.stmt.Statement;
+import org.codehaus.groovy.ast.stmt.SwitchStatement;
+import org.codehaus.groovy.ast.stmt.ThrowStatement;
+import org.codehaus.groovy.ast.stmt.TryCatchStatement;
+import org.codehaus.groovy.ast.stmt.WhileStatement;
 import org.codehaus.groovy.control.SourceUnit;
 import org.codehaus.groovy.control.messages.WarningMessage;
 import org.codehaus.groovy.syntax.Token;
@@ -113,6 +131,19 @@ import org.grails.datastore.mapping.reflect.AstUtils;
  * {@code GString} operand anywhere in it makes the whole result flattened, not merely a
  * lower-confidence concatenation.
  *
+ * <p><strong>Control flow.</strong> Local tracking is flow-sensitive. The branches of an
+ * {@code if}/{@code else} and the cases of a {@code switch} (including fall-through) are each
+ * walked from the state before the statement and merged pessimistically afterwards: a variable
+ * unsafe at the end of any path stays unsafe, and is constant text only if it is constant at the
+ * end of every path. A {@code catch} block starts from the merge of every state its {@code try}
+ * block passed through, since an exception may leave the block after any statement, and a
+ * {@code finally} block is checked against every path into it. A loop body or closure body may
+ * run any number of times, so it is re-walked from the merged loop-head state until that state
+ * is stable before findings are reported: an assignment late in the body is seen by a use
+ * earlier in it, which the next iteration reaches. {@code break}, {@code continue} and, in a
+ * closure, {@code return} carry their state to the exit or head they jump to, and a path ending
+ * in such a jump or in {@code throw} contributes nothing to the state after the statement.
+ *
  * <p>This is a build-breaking error for the local-variable case above, because the detection is
  * precise: every flattening point is visible in the method being compiled. Two related patterns
  * are lower-confidence and instead reported as compile-time <em>warnings</em>, which do not fail
@@ -147,10 +178,11 @@ import org.grails.datastore.mapping.reflect.AstUtils;
  *     <li>Constant-text tracking follows locals, {@code static final} fields, ternaries and
  *     {@code +}/{@code +=}/{@code GString} composition only - not collections (for example
  *     fragments gathered in a {@code List} and joined), method calls, or non-final fields.</li>
- *     <li>Reassignment tracking for locals is branch-sensitive across a single {@code if}/{@code
- *     else} (a variable unsafe after either branch stays unsafe, and constant only if constant
- *     after both), but not across loops, {@code switch}, or {@code try}/{@code catch} - and is
- *     last-write-wins for fields, which are not branch-sensitive at all.</li>
+ *     <li>Flow-sensitivity applies to locals only; field tracking is last-write-wins in source
+ *     order. A closure body is analysed with the state at the point the closure is defined, so a
+ *     local reassigned between the definition and the call is not seen inside it. Reachability
+ *     is approximated: a path is treated as not continuing only when its block ends in
+ *     {@code return}, {@code throw}, {@code break} or {@code continue}.</li>
  *     <li>Field tracking only recognizes a directly-interpolated {@code GString} initializer or
  *     {@code this.field = ...} assignment - it does not follow aliasing chains or
  *     {@code .toString()}/cast coercions the way local tracking does.</li>
@@ -231,6 +263,19 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     private final Set<String> suppressedVars = new HashSet<>();
     private final Map<String, ASTNode> flattenedFields = new HashMap<>();
     private final Set<String> resolvingFields = new HashSet<>();
+    /**
+     * The loops, {@code switch} statements and closure bodies being walked, innermost first, that
+     * a {@code break}, {@code continue} or {@code return} can carry its state to.
+     */
+    private final Deque<JumpTarget> jumpTargets = new ArrayDeque<>();
+    /**
+     * One entry per {@code try} or {@code catch} block being walked: the merge of every state the
+     * block has passed through so far, which is what an exception leaving it after any statement
+     * can carry to a {@code catch} or {@code finally} block.
+     */
+    private final List<TrackingSnapshot> exceptionalStates = new ArrayList<>();
+    /** Above zero while a body is re-walked to settle its state; findings are reported only at zero. */
+    private int silentPasses;
     private ClassNode currentClassNode;
     private MethodNode currentMethodNode;
 
@@ -331,28 +376,285 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     }
 
     /**
-     * Visits an {@code if}/{@code else} branch-sensitively: each branch is walked from the same
-     * starting state, and the two resulting states are merged pessimistically afterwards - a
-     * variable unsafe at the end of either branch stays unsafe after the statement, and one is
-     * constant text only if it is constant at the end of both, since we don't know at compile
-     * time which branch will actually run. Without this, whichever branch happens to be visited
-     * last would silently win, e.g. a variable flattened only in the {@code if} branch would be
-     * forgotten if the {@code else} branch reassigns it safely.
+     * Visits an {@code if}/{@code else} flow-sensitively: each branch is walked from the state
+     * before the statement, and the states at the end of the branches that can complete normally
+     * are merged pessimistically afterwards (see {@link #merge}). Without this, whichever branch
+     * happens to be visited last would silently win, e.g. a variable flattened only in the
+     * {@code if} branch would be forgotten if the {@code else} branch reassigns it safely.
      */
     @Override
     public void visitIfElse(IfStatement ifElse) {
+        visitStatement(ifElse);
         ifElse.getBooleanExpression().visit(this);
+        TrackingSnapshot before = snapshot();
+        TrackingSnapshot afterIf = walkFrom(before, ifElse.getIfBlock());
+        TrackingSnapshot afterElse = walkFrom(before, ifElse.getElseBlock());
+        restore(merge(normalExit(ifElse.getIfBlock(), afterIf), normalExit(ifElse.getElseBlock(), afterElse)),
+                merge(afterIf, afterElse));
+    }
 
-        TrackingSnapshot beforeBranches = snapshot();
+    /**
+     * Visits a {@code switch}: every case is walked from the state before the statement merged
+     * with the state the preceding case falls through with, and the state afterwards is merged
+     * from every path that leaves the statement - the last case or the default completing
+     * normally (which, with no default, includes no case matching) and every {@code break}.
+     */
+    @Override
+    public void visitSwitch(SwitchStatement statement) {
+        visitStatement(statement);
+        statement.getExpression().visit(this);
+        TrackingSnapshot before = snapshot();
+        JumpTarget target = new JumpTarget(statement, JumpTarget.Kind.SWITCH);
+        jumpTargets.push(target);
+        try {
+            TrackingSnapshot fallThrough = null;
+            for (CaseStatement caseStatement : statement.getCaseStatements()) {
+                restore(merge(before, fallThrough));
+                visitStatement(caseStatement);
+                caseStatement.getExpression().visit(this);
+                caseStatement.getCode().visit(this);
+                fallThrough = normalExit(caseStatement.getCode(), snapshot());
+            }
+            Statement defaultStatement = statement.getDefaultStatement();
+            TrackingSnapshot end = walkFrom(merge(before, fallThrough), defaultStatement);
+            restore(merge(normalExit(defaultStatement, end), target.exit), end);
+        } finally {
+            jumpTargets.pop();
+        }
+    }
 
-        ifElse.getIfBlock().visit(this);
-        TrackingSnapshot afterIf = snapshot();
+    /**
+     * Visits a {@code try} statement. An exception can leave the {@code try} block after any
+     * statement, so each {@code catch} block starts from the merge of every state the block
+     * passed through (accumulated by {@link #visitStatement}). The {@code finally} block runs
+     * after any of those states, or any state a {@code catch} block passed through, and is
+     * checked against all of them; but only a {@code try} or {@code catch} block that completes
+     * normally continues past the statement, so the state afterwards is derived from those paths
+     * alone.
+     */
+    @Override
+    public void visitTryCatchFinally(TryCatchStatement statement) {
+        visitStatement(statement);
+        TrackingSnapshot inTry = accumulateStates(() -> {
+            for (Statement resource : statement.getResourceStatements()) {
+                resource.visit(this);
+            }
+            statement.getTryStatement().visit(this);
+        });
+        TrackingSnapshot afterTry = snapshot();
+        TrackingSnapshot normalExits = normalExit(statement.getTryStatement(), afterTry);
+        TrackingSnapshot intoFinally = inTry;
+        for (CatchStatement catchStatement : statement.getCatchStatements()) {
+            restore(inTry);
+            intoFinally = merge(intoFinally, accumulateStates(() -> catchStatement.visit(this)));
+            normalExits = merge(normalExits, normalExit(catchStatement.getCode(), snapshot()));
+        }
+        Statement finallyStatement = statement.getFinallyStatement();
+        TrackingSnapshot afterFinally = null;
+        if (normalExits != null) {
+            silentPasses++;
+            try {
+                afterFinally = walkFrom(normalExits, finallyStatement);
+            } finally {
+                silentPasses--;
+            }
+        }
+        walkFrom(intoFinally, finallyStatement);
+        restore(afterFinally, snapshot());
+    }
 
-        restore(beforeBranches);
-        ifElse.getElseBlock().visit(this);
-        TrackingSnapshot afterElse = snapshot();
+    /**
+     * Runs {@code walk} with a fresh entry on {@link #exceptionalStates} and returns the merge of
+     * every state the walked code passed through, from the state before it to the one it leaves.
+     */
+    private TrackingSnapshot accumulateStates(Runnable walk) {
+        int index = exceptionalStates.size();
+        exceptionalStates.add(snapshot());
+        TrackingSnapshot accumulated;
+        try {
+            walk.run();
+        } finally {
+            accumulated = exceptionalStates.remove(index);
+        }
+        return merge(accumulated, snapshot());
+    }
 
-        restore(mergePessimistically(afterIf, afterElse));
+    /**
+     * Records the state before every statement walked inside a {@code try} or {@code catch}
+     * block, for the handlers an exception thrown by that statement would reach.
+     */
+    @Override
+    protected void visitStatement(Statement statement) {
+        if (!exceptionalStates.isEmpty()) {
+            TrackingSnapshot current = snapshot();
+            for (int i = 0; i < exceptionalStates.size(); i++) {
+                exceptionalStates.set(i, merge(exceptionalStates.get(i), current));
+            }
+        }
+    }
+
+    @Override
+    public void visitForLoop(ForStatement statement) {
+        visitStatement(statement);
+        statement.getCollectionExpression().visit(this);
+        visitRepeatedly(new JumpTarget(statement, JumpTarget.Kind.LOOP), statement.getLoopBlock(), false);
+    }
+
+    @Override
+    public void visitWhileLoop(WhileStatement statement) {
+        visitStatement(statement);
+        statement.getBooleanExpression().visit(this);
+        visitRepeatedly(new JumpTarget(statement, JumpTarget.Kind.LOOP), statement.getLoopBlock(), false);
+    }
+
+    @Override
+    public void visitDoWhileLoop(DoWhileStatement statement) {
+        visitStatement(statement);
+        visitRepeatedly(new JumpTarget(statement, JumpTarget.Kind.LOOP), statement.getLoopBlock(), true);
+        statement.getBooleanExpression().visit(this);
+    }
+
+    /**
+     * A closure body may run any number of times after the closure is defined, so it is walked
+     * like a loop body, with the state at the point of definition.
+     */
+    @Override
+    public void visitClosureExpression(ClosureExpression expression) {
+        if (expression.isParameterSpecified()) {
+            for (Parameter parameter : expression.getParameters()) {
+                visitAnnotations(parameter);
+                if (parameter.hasInitialExpression()) {
+                    parameter.getInitialExpression().visit(this);
+                }
+            }
+        }
+        visitRepeatedly(new JumpTarget(null, JumpTarget.Kind.CLOSURE), expression.getCode(), false);
+    }
+
+    /**
+     * Walks {@code body}, which may run any number of times. It is first re-walked silently from
+     * the merge of the states that reach its head - the state before it, the state at its end and
+     * at every {@code continue} (or, for a closure, every {@code return}) - until that merged
+     * state stops changing, so a variable assigned data late in the body is unsafe at every use
+     * the next iteration reaches, including the uses before the assignment. The walk from the
+     * settled state is the one that reports findings. This terminates because {@link #merge} only
+     * ever moves a variable towards a less safe category. The state afterwards is the loop-head
+     * state merged with every {@code break}, or for a body that runs at least once the states
+     * leaving its last iteration.
+     */
+    private void visitRepeatedly(JumpTarget target, Statement body, boolean runsAtLeastOnce) {
+        TrackingSnapshot head = snapshot();
+        silentPasses++;
+        try {
+            TrackingSnapshot next = iterate(target, head, body);
+            while (!next.sameStateAs(head)) {
+                head = next;
+                next = iterate(target, head, body);
+            }
+        } finally {
+            silentPasses--;
+        }
+        iterate(target, head, body);
+        TrackingSnapshot exit = runsAtLeastOnce ?
+                merge(merge(normalExit(body, target.end), target.head), target.exit) :
+                merge(head, target.exit);
+        restore(exit, target.end);
+    }
+
+    /**
+     * Walks {@code body} once from {@code head}, with {@code target} collecting the jumps inside
+     * it, and returns the state at the head of the next run.
+     */
+    private TrackingSnapshot iterate(JumpTarget target, TrackingSnapshot head, Statement body) {
+        target.reset();
+        jumpTargets.push(target);
+        try {
+            target.end = walkFrom(head, body);
+        } finally {
+            jumpTargets.pop();
+        }
+        TrackingSnapshot next = merge(head, target.head);
+        // A closure's return is collected as a jump to its head; any other way out of its body
+        // (or a loop body that falls off its end) reaches the head too.
+        return target.kind == JumpTarget.Kind.CLOSURE ?
+                merge(next, target.end) : merge(next, normalExit(body, target.end));
+    }
+
+    @Override
+    public void visitBreakStatement(BreakStatement statement) {
+        super.visitBreakStatement(statement);
+        JumpTarget target = jumpTarget(statement.getLabel(), false);
+        if (target != null) {
+            target.exit = merge(target.exit, snapshot());
+        }
+    }
+
+    @Override
+    public void visitContinueStatement(ContinueStatement statement) {
+        super.visitContinueStatement(statement);
+        JumpTarget target = jumpTarget(statement.getLabel(), true);
+        if (target != null) {
+            target.head = merge(target.head, snapshot());
+        }
+    }
+
+    @Override
+    public void visitReturnStatement(ReturnStatement statement) {
+        super.visitReturnStatement(statement);
+        // Returning from a closure ends one run of its body; the next run starts from its head.
+        for (JumpTarget target : jumpTargets) {
+            if (target.kind == JumpTarget.Kind.CLOSURE) {
+                target.head = merge(target.head, snapshot());
+                break;
+            }
+        }
+    }
+
+    /**
+     * The innermost enclosing loop (or, for a {@code break}, {@code switch}) that a jump leaves,
+     * by label when it has one. A jump cannot cross a closure boundary.
+     */
+    private JumpTarget jumpTarget(String label, boolean loopsOnly) {
+        for (JumpTarget target : jumpTargets) {
+            if (target.kind == JumpTarget.Kind.CLOSURE) {
+                return null;
+            }
+            boolean kindMatches = target.kind == JumpTarget.Kind.LOOP || !loopsOnly;
+            if (kindMatches && (label == null || target.labels.contains(label))) {
+                return target;
+            }
+        }
+        return null;
+    }
+
+    private TrackingSnapshot walkFrom(TrackingSnapshot start, Statement statement) {
+        restore(start);
+        statement.visit(this);
+        return snapshot();
+    }
+
+    /**
+     * {@code end} when {@code statement} can complete normally, else {@code null}: the state at
+     * the end of a block whose last statement is a jump went where the jump went instead.
+     */
+    private static TrackingSnapshot normalExit(Statement statement, TrackingSnapshot end) {
+        return completesAbruptly(statement) ? null : end;
+    }
+
+    private static boolean completesAbruptly(Statement statement) {
+        if (statement instanceof BreakStatement || statement instanceof ContinueStatement ||
+                statement instanceof ReturnStatement || statement instanceof ThrowStatement) {
+            return true;
+        }
+        if (statement instanceof BlockStatement) {
+            List<Statement> statements = ((BlockStatement) statement).getStatements();
+            return !statements.isEmpty() && completesAbruptly(statements.get(statements.size() - 1));
+        }
+        if (statement instanceof IfStatement) {
+            IfStatement ifElse = (IfStatement) statement;
+            return completesAbruptly(ifElse.getIfBlock()) && completesAbruptly(ifElse.getElseBlock());
+        }
+        return false;
     }
 
     private TrackingSnapshot snapshot() {
@@ -373,7 +675,27 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
         suppressedVars.addAll(state.suppressed);
     }
 
-    private TrackingSnapshot mergePessimistically(TrackingSnapshot a, TrackingSnapshot b) {
+    /**
+     * Restores {@code state}, or {@code ifUnreachable} when no path reaches this point (every
+     * path jumped away), in which case what follows is dead code and the state is immaterial.
+     */
+    private void restore(TrackingSnapshot state, TrackingSnapshot ifUnreachable) {
+        restore(state != null ? state : ifUnreachable);
+    }
+
+    /**
+     * Merges the states at the end of two paths pessimistically, since we don't know at compile
+     * time which will actually run: a variable unsafe at the end of either stays unsafe, and one
+     * is constant text only if it is constant at the end of both. {@code null} stands for a path
+     * that does not exist and merges to the other.
+     */
+    private static TrackingSnapshot merge(TrackingSnapshot a, TrackingSnapshot b) {
+        if (a == null) {
+            return b;
+        }
+        if (b == null) {
+            return a;
+        }
         Set<String> names = new HashSet<>();
         names.addAll(a.flattened.keySet());
         names.addAll(a.live.keySet());
@@ -387,8 +709,8 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
         Map<String, ASTNode> mergedConcatenated = new HashMap<>();
 
         for (String name : names) {
-            // Unsafe states win pessimistically: if either branch leaves this variable unsafe,
-            // that state survives past the if/else regardless of which branch actually runs.
+            // Unsafe states win pessimistically: if either path leaves this variable unsafe,
+            // that state survives the merge regardless of which path actually runs.
             if (a.flattened.containsKey(name) || b.flattened.containsKey(name)) {
                 mergedFlattened.put(name, a.flattened.containsKey(name) ? a.flattened.get(name) : b.flattened.get(name));
             }
@@ -427,6 +749,48 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
             this.concatenated = new HashMap<>(concatenated);
             this.constant = new HashSet<>(constant);
             this.suppressed = new HashSet<>(suppressed);
+        }
+
+        /**
+         * Whether every variable is in the same category as in {@code other}. The location nodes
+         * are not compared: they only record where a category was first established.
+         */
+        boolean sameStateAs(TrackingSnapshot other) {
+            return flattened.keySet().equals(other.flattened.keySet()) &&
+                    live.keySet().equals(other.live.keySet()) &&
+                    concatenated.keySet().equals(other.concatenated.keySet()) &&
+                    constant.equals(other.constant) &&
+                    suppressed.equals(other.suppressed);
+        }
+    }
+
+    /**
+     * A loop, {@code switch} or closure body being walked, with the states that jumps inside it
+     * carry to its exit ({@code break}) and to its head ({@code continue}, or {@code return} from
+     * a closure), and the state at the end of its most recent walk.
+     */
+    private static final class JumpTarget {
+
+        enum Kind {
+            LOOP, SWITCH, CLOSURE
+        }
+
+        final Kind kind;
+        final List<String> labels;
+        TrackingSnapshot exit;
+        TrackingSnapshot head;
+        TrackingSnapshot end;
+
+        JumpTarget(Statement statement, Kind kind) {
+            this.kind = kind;
+            List<String> statementLabels = statement != null ? statement.getStatementLabels() : null;
+            this.labels = statementLabels != null ? statementLabels : Collections.emptyList();
+        }
+
+        void reset() {
+            exit = null;
+            head = null;
+            end = null;
         }
     }
 
@@ -817,6 +1181,9 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     }
 
     private void report(Finding finding, ASTNode node, String methodName) {
+        if (silentPasses > 0) {
+            return;
+        }
         switch (finding) {
             case FLATTENED_GSTRING:
                 reportUnsafeQuery(node, methodName);

@@ -118,7 +118,7 @@ Book.executeQuery("from Book b where 1 = 1 ${restriction}", [title: params.title
 // runs as:  from Book b where 1 = 1 :p0   -- the fragment is bound as a value
 ----
 
-The check tells query text and values apart. An interpolation that is *constant text* cannot carry user input, so it is not flagged even when the `GString` is coerced to a `String`. Constant text is a string literal, a `static final` field initialized from constant text, a ternary or Elvis expression choosing between constant text, a `+` concatenation or `GString` made only of constant text, and a local variable that only ever held constant text on every path leading to the query. This is what lets restrictions be chosen at runtime while the values stay bound:
+The check tells query text and values apart. An interpolation that is *constant text* cannot carry user input, so it is not flagged even when the `GString` is coerced to a `String`. Constant text is a string literal, a `static final` field initialized from constant text, a ternary or Elvis expression choosing between constant text, a `+` concatenation or `GString` made only of constant text, and a local variable that only ever held constant text on every path leading to the query, whichever `if`/`else`, `switch`, `try`/`catch`, loop or closure those paths run through. This is what lets restrictions be chosen at runtime while the values stay bound:
 
 [source,groovy]
 ----

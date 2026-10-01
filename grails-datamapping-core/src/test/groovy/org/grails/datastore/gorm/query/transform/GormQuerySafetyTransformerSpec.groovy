@@ -219,6 +219,249 @@ class Book {
         bookClass != null
     }
 
+    @Unroll
+    void "test a variable assigned data on one path of #construct is not treated as constant text"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List sorted(String sort, List<String> sorts) {
+        String frag = ""
+        $body
+        String q = "from Book order by \${frag}"
+        executeQuery(q)
+    }
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                          | body
+        'an if/else'                                       | 'if (sort) { frag = sort } else { frag = " title" }'
+        'a try/catch'                                      | 'try { frag = sort } catch (Exception ex) { frag = "" }'
+        'a try block that overwrites it before the catch'  | 'try { frag = sort; frag.length(); frag = " title" } catch (Exception ex) { }'
+        'a switch'                                         | 'switch (sort) { case "a": frag = sort; break; default: frag = " title" }'
+        'a switch with no default'                         | 'switch (sort) { case "a": frag = sort; break }'
+        'a for loop'                                       | 'for (String s in sorts) { frag = s }'
+        'a while loop'                                     | 'while (sorts) { frag = sorts.remove(0) }'
+        'a do/while loop'                                  | 'do { frag = sort } while (false)'
+        'a loop that breaks after the assignment'          | 'for (String s in sorts) { if (s) { frag = s; break } }'
+        'a loop that continues after the assignment'       | 'for (String s in sorts) { if (s) { frag = s; continue } }'
+        'a closure'                                        | 'sorts.each { frag = it }'
+        'a closure that returns after the assignment'      | 'sorts.each { frag = it; return }'
+    }
+
+    void "test a variable assigned data later in a loop body is unsafe at a use earlier in it"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void sorted(List<String> sorts) {
+        String frag = " title"
+        for (String sort in sorts) {
+            String q = "from Book order by ${frag}"
+            executeQuery(q)
+            frag = sort
+        }
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.errorCollector.errorCount == 1
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+    }
+
+    void "test a continue carries its state to the next iteration"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void byTitle(List<String> titles) {
+        String q = "from Book"
+        for (String title in titles) {
+            executeQuery(q)
+            if (title) {
+                q = "from Book where title = ${title}"
+                continue
+            }
+            q = "from Book"
+        }
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.errorCollector.errorCount == 1
+        e.message.contains('GormUnsafeQueryString')
+    }
+
+    void "test a labelled break carries its state to the loop it leaves"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List byTitle(List<String> titles) {
+        String q = "from Book"
+        outer:
+        for (String title in titles) {
+            for (String other in titles) {
+                if (other == title) {
+                    q = "from Book where title = ${title}"
+                    break outer
+                }
+            }
+            q = "from Book"
+        }
+        executeQuery(q)
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+    }
+
+    void "test a case entered by falling through from a case that assigned data sees that data"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List sorted(String mode, String sort) {
+        String frag = " title"
+        switch (mode) {
+            case "custom":
+                frag = sort
+            case "custom-or-title":
+                String q = "from Book order by ${frag}"
+                return executeQuery(q)
+            default:
+                return []
+        }
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+    }
+
+    void "test a case that breaks does not fall through into the next case"() {
+        when:
+        List<WarningMessage> warnings = compileAndCollectWarnings('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List sorted(String mode, String sort) {
+        String frag = " title"
+        String query = "from Book"
+        switch (mode) {
+            case "custom":
+                frag = sort
+                break
+            case "title":
+                query = "from Book order by ${frag}"
+                break
+        }
+        executeQuery(query)
+    }
+}
+''')
+
+        then:
+        warnings.empty
+    }
+
+    void "test a query in a finally block is checked against every path into it"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void byTitle(String title) {
+        String q = "from Book"
+        try {
+            q = "from Book where title = ${title}"
+            q = "from Book"
+        } finally {
+            executeQuery(q)
+        }
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.errorCollector.errorCount == 1
+        e.message.contains('GormUnsafeQueryString')
+    }
+
+    @Unroll
+    void "test #description compiles cleanly with no warnings"() {
+        when:
+        List<WarningMessage> warnings = compileAndCollectWarnings("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List search(List<String> titles, String title, boolean condition) {
+        Map queryParams = [title: title]
+        $body
+        executeQuery(q, queryParams)
+    }
+}
+""")
+
+        then:
+        warnings.empty
+
+        where:
+        description                                                   | body
+        'constant text appended in a loop'                            | 'String q = "from Book b where 1 = 1"\n        for (String t in titles) {\n            q += " and b.title = :title"\n        }'
+        'constant text chosen in every case of a switch'              | 'String q\n        switch (title) {\n            case "a": q = "from Book b where b.title = :title"; break\n            default: q = "from Book b"\n        }'
+        'constant text assigned in both a try and its catch block'    | 'String q\n        try {\n            q = "from Book b where b.title = :title"\n        } catch (Exception ex) {\n            q = "from Book b"\n        }'
+        'a query reassigned safely in a try block with a finally'     | 'String q = "from Book b where b.title = ${title}"\n        try {\n            q = "from Book b where b.title = :title"\n        } finally {\n            queryParams.title = title\n        }'
+        'a branch that returns before reaching the query'             | 'String q = "from Book b"\n        if (condition) {\n            q = "from Book b where b.title = ${title}"\n            return [q]\n        }'
+        'a loop iteration that returns before reaching the query'     | 'String q = "from Book b"\n        for (String t in titles) {\n            if (t == title) {\n                q = "from Book b where b.title = ${t}"\n                return [q]\n            }\n        }'
+    }
+
     void "test aliasing a plain non-interpolated variable compiles cleanly"() {
         when:
         Class<?> bookClass = new GroovyClassLoader().parseClass('''
