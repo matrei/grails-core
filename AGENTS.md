@@ -35,6 +35,9 @@ limitations under the License.
 # Style check
 ./gradlew codeStyle
 
+# Dependency health (duplicate classes on a classpath fail the build)
+./gradlew buildHealth
+
 # Out of memory? Set:
 export GRADLE_OPTS="-Xms2G -Xmx5G"
 ```
@@ -102,6 +105,7 @@ All managed dependency versions live in `dependencies.gradle` (the single source
 - **Do not suppress validation to work around a bump.** `allowedBomOverrides` (per-project ext) and dependency exclusions are reserved for an explicit, documented conflict or an agreed-upon workaround — never as a shortcut to silence a version the BOM should simply manage. Comment the reason when you must use one.
 - **A dependency managed in more than one BOM must use the *same* version everywhere.** Versions appear in `gradleBomDependencyVersions` (build tooling / `grails-gradle-bom`), `bomDependencyVersions` (`grails-bom`), and per-BOM `customBomVersions` blocks (e.g. `grails-micronaut-bom`). `grails-bom` re-declares the gradle-BOM constraints, and the Micronaut/Hibernate BOMs are consumed via `enforcedPlatform`. Declaring one coordinate (e.g. `org.ow2.asm:asm`) at two different versions across these maps produces irreconcilable strict constraints and breaks `enforcedPlatform` resolution. Pin it once, consistently.
 - **Prefer inheriting from the Spring Boot BOM.** Do not re-pin a coordinate that `spring-boot-dependencies` (3.5.x) already manages unless you are intentionally overriding it to a newer version (e.g. a security fix); note the reason inline.
+- **No two dependencies may provide the same class.** The `buildHealth` task (the `com.autonomousapps.build-health` settings plugin, configured in `gradle/dependency-analysis.settings.gradle` and applied to every build in the repository) fails when two dependencies on a classpath provide the same fully qualified class name that the module's own code references, because compile and runtime behavior then depend on classpath order. The Build Health workflow runs it on every push and pull request, alongside the code style checks. Resolve a report by removing or excluding the redundant dependency; its other categories (unused or transitive dependencies, wrong configurations) are advice only.
 
 ## Key Modules
 
@@ -222,6 +226,7 @@ class MyService { }
 | Single feature | `./gradlew :module:test --tests "pkg.MySpec.feature name"` |
 | Force rerun | `./gradlew :module:test --rerun-tasks` |
 | Style check | `./gradlew codeStyle` |
+| Dependency health | `./gradlew buildHealth` |
 | Build docs | `./gradlew :grails-doc:publishGuide -x aggregateGroovydoc` |
 | Debug | `./gradlew bootRun --debug-jvm` |
 
@@ -255,8 +260,9 @@ Rules:
 1. **Fork & branch** from the target release branch (e.g., `7.0.x`)
 2. **Run tests** before submitting: `./gradlew build --rerun-tasks`
 3. **Run code style checks**: `./gradlew codeStyle`
-4. **Squash commits** into a single meaningful commit message
-5. **Reference issues** in PR description (e.g., "Fixes #1234")
+4. **Run dependency health checks**: `./gradlew buildHealth`
+5. **Squash commits** into a single meaningful commit message
+6. **Reference issues** in PR description (e.g., "Fixes #1234")
 
 ### Review Process
 
