@@ -29,3 +29,5 @@ Each bundle starts with the name `messages` by convention and ends with the loca
 * ...
 
 By default Grails looks in `messages.properties` for messages unless the user has specified a locale. You can create your own message bundle by simply creating a new properties file that ends with the locale you are interested in. For example `messages_en_GB.properties` for British English.
+
+Grails discovers every bundle in `grails-app/i18n` automatically. If you configure the `messageSource` bean yourself and set its `basenames` property, the bundles you list are checked first, in the order given, and the discovered bundles are appended after them. A bundle listed ahead of `messages` can therefore override individual codes without editing the original files, and a listed bundle that lives outside `grails-app/i18n` is still resolved.

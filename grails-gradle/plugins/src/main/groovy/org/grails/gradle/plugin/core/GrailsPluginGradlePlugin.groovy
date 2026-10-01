@@ -25,6 +25,7 @@ import groovy.transform.CompileStatic
 
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.JavaExec
@@ -142,6 +143,9 @@ class GrailsPluginGradlePlugin extends GrailsGradlePlugin {
             it.from(sourceSets.ast.output)
             it.into(project.layout.buildDirectory.dir('classes/groovy/main'))
         }
+        // The AST classes are copied into the main classes directory, so every task that reads the main
+        // classes directories (not only the ones wired through 'classes') must run after the copy.
+        (sourceSets.main.output.classesDirs as ConfigurableFileCollection).builtBy(copyAstClasses)
 
         project.tasks.named('findMainClass', FindMainClassTask).configure {
             it.dependsOn(copyAstClasses)
