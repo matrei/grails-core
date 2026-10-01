@@ -108,6 +108,8 @@ class GrailsGradlePlugin implements Plugin<Project> {
 
     private static final String SPRING_BOOT_PLUGIN = 'org.springframework.boot'
 
+    private static final String ASSET_PIPELINE_PLUGIN = 'cloud.wondrify.asset-pipeline'
+
     private static final int TRAINING_PORT = 18080
 
     /** Not the training port: a trace and a training run are both a started application. */
@@ -984,25 +986,27 @@ ${importStatements}
     }
 
     protected void configureAssetCompilation(Project project) {
-        configureAssetPipelineLayout(project)
+        // Whenever the asset pipeline is applied, not only if it already has been: an application
+        // applies this plugin first, before the pipeline has created its extension.
+        project.pluginManager.withPlugin(ASSET_PIPELINE_PLUGIN) {
+            configureAssetPipelineLayout(project)
+        }
     }
 
     /**
-     * Only the asset pipeline's own extension and task need dynamic dispatch, as the plugin is not
-     * a compile-time dependency. Calls to this plugin's own private methods stay out of here: on a
+     * Only the asset pipeline's own extension needs dynamic dispatch, as the plugin is not a
+     * compile-time dependency. Calls to this plugin's own private methods stay out of here: on a
      * reused daemon Gradle replaces the meta class of the applied plugin class with one that
      * dispatches on the runtime class alone, so under Gradle 8 a private method of this class is
      * not found when the applied plugin is a subclass.
+     *
+     * <p>The pipeline only defaults to {@code grails-app/assets} if this plugin was applied before
+     * it. Its compiled assets keep the pipeline's own location, {@code build/assets}.</p>
      */
     @CompileDynamic
     private static void configureAssetPipelineLayout(Project project) {
-        if (project.extensions.findByName('assets')) {
-            project.assets {
-                assetsPath = project.layout.projectDirectory.dir('grails-app/assets')
-            }
-            project.tasks.named('assetCompile').configure {
-                it.destinationDirectory = project.layout.buildDirectory.dir('assetCompile/assets')
-            }
+        project.assets {
+            assetsPath = project.layout.projectDirectory.dir('grails-app/assets')
         }
     }
 
