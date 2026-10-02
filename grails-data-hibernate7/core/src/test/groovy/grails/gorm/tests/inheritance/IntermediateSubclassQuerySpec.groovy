@@ -20,6 +20,8 @@ package grails.gorm.tests.inheritance
 
 import grails.gorm.annotation.Entity
 import grails.gorm.tests.HibernateGormDatastoreSpec
+import org.hibernate.Hibernate
+import org.hibernate.proxy.HibernateProxy
 import spock.lang.Issue
 import spock.lang.Unroll
 
@@ -28,9 +30,9 @@ class IntermediateSubclassQuerySpec extends HibernateGormDatastoreSpec {
 
     void setupSpec() {
         manager.registerDomainClasses(
-                HierarchyVehicle, HierarchyCar, HierarchySportsCar, HierarchySedan,
-                JoinedVehicle, JoinedCar, JoinedSportsCar, JoinedSedan,
-                ConcreteVehicle, ConcreteCar, ConcreteSportsCar, ConcreteSedan
+                HierarchyVehicle, HierarchyCar, HierarchySportsCar, HierarchySedan, HierarchyGarage,
+                JoinedVehicle, JoinedCar, JoinedSportsCar, JoinedSedan, JoinedGarage,
+                ConcreteVehicle, ConcreteCar, ConcreteSportsCar, ConcreteSedan, ConcreteGarage
         )
     }
 
@@ -89,6 +91,43 @@ class IntermediateSubclassQuerySpec extends HibernateGormDatastoreSpec {
         ConcreteVehicle  | ConcreteCar  | ConcreteSportsCar  | ConcreteSedan
     }
 
+    @Unroll
+    void 'associations typed to the intermediate class #car.simpleName load its subclass instances'() {
+        given:
+        def savedSportsCar = sportsCar.newInstance(name: 'sports car').save(failOnError: true)
+        def savedSedan = sedan.newInstance(name: 'sedan').save(failOnError: true)
+        def savedGarage = garage.newInstance(name: 'garage', car: savedSportsCar)
+        savedGarage.addToCars(savedSportsCar)
+        savedGarage.addToCars(savedSedan)
+        savedGarage.save(failOnError: true, flush: true)
+        manager.session.clear()
+
+        when: 'the single-ended association is loaded lazily'
+        def lazyGarage = garage.get(savedGarage.id)
+
+        then: 'the proxy initializes to the subclass instance'
+        lazyGarage.car instanceof HibernateProxy
+        Hibernate.getClass(lazyGarage.car) == sportsCar
+        lazyGarage.car.name == 'sports car'
+
+        and: 'the collection holds every subclass instance'
+        lazyGarage.cars.collect { Hibernate.getClass(it) } as Set == [sportsCar, sedan] as Set
+
+        when: 'the single-ended association is join fetched'
+        manager.session.clear()
+        def fetchedGarage = garage.list(fetch: [car: 'join']).first()
+
+        then: 'the association is the subclass instance itself'
+        !(fetchedGarage.car instanceof HibernateProxy)
+        fetchedGarage.car.getClass() == sportsCar
+
+        where:
+        car          | sportsCar          | sedan          | garage
+        HierarchyCar | HierarchySportsCar | HierarchySedan | HierarchyGarage
+        JoinedCar    | JoinedSportsCar    | JoinedSedan    | JoinedGarage
+        ConcreteCar  | ConcreteSportsCar  | ConcreteSedan  | ConcreteGarage
+    }
+
     private Map<Class, Object> saveHierarchy(Class vehicle, Class car, Class sportsCar, Class sedan) {
         Map<Class, Object> ids = [
                 (vehicle)  : vehicle.newInstance(name: 'vehicle').save(failOnError: true).id,
@@ -120,6 +159,13 @@ class HierarchySedan extends HierarchyCar {
 }
 
 @Entity
+class HierarchyGarage {
+    String name
+    HierarchyCar car
+    static hasMany = [cars: HierarchyCar]
+}
+
+@Entity
 class JoinedVehicle {
     String name
 
@@ -138,6 +184,13 @@ class JoinedSportsCar extends JoinedCar {
 
 @Entity
 class JoinedSedan extends JoinedCar {
+}
+
+@Entity
+class JoinedGarage {
+    String name
+    JoinedCar car
+    static hasMany = [cars: JoinedCar]
 }
 
 @Entity
@@ -160,4 +213,11 @@ class ConcreteSportsCar extends ConcreteCar {
 
 @Entity
 class ConcreteSedan extends ConcreteCar {
+}
+
+@Entity
+class ConcreteGarage {
+    String name
+    ConcreteCar car
+    static hasMany = [cars: ConcreteCar]
 }

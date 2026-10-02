@@ -19,8 +19,8 @@
 
 package org.grails.orm.hibernate.cfg.domainbinding.binder
 
-
 import grails.gorm.tests.HibernateGormDatastoreSpec
+import org.grails.datastore.mapping.core.connections.ConnectionSource
 import org.grails.orm.hibernate.cfg.Mapping
 import org.grails.orm.hibernate.cfg.PersistentEntityNamingStrategy
 import org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernatePersistentEntity
@@ -29,7 +29,6 @@ import org.hibernate.boot.spi.MetadataBuildingContext
 import org.hibernate.mapping.RootClass
 import org.hibernate.mapping.SingleTableSubclass
 import spock.lang.Issue
-import org.grails.datastore.mapping.core.connections.ConnectionSource
 
 class RootBinderSpec extends HibernateGormDatastoreSpec {
 
