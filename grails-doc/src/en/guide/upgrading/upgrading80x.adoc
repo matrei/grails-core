@@ -1457,6 +1457,21 @@ grails.gorm.default.constraints = {
 }
 ----
 
+Domains mocked with `DataTest` or `DomainUnitTest` use the same settings as the running application.
+They are read from `application.yml` or `application.groovy`.
+A specification can also set them in `doWithConfig`:
+
+[source,groovy]
+----
+class BookSpec extends Specification implements DomainUnitTest<Book> {
+
+    @Override
+    Closure doWithConfig() {{ config ->
+        config.grails.gorm.default.nullable = false
+    }}
+}
+----
+
 [[groovy5-behavior-changes]]
 ==== 28. Apache Groovy 5 Behavior Changes
 
