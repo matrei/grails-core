@@ -80,7 +80,7 @@ You can also configure the discriminator column type and whether it is insertabl
 ----
 static mapping = {
     discriminator {
-        column name: 'dtype', sqlType: 'varchar(30)'
+        column name: 'content_type', sqlType: 'varchar(30)'
         value  'blog'
         insert false
     }

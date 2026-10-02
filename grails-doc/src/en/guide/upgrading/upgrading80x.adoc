@@ -1404,6 +1404,33 @@ Declaring all three names prevents the naming strategy from changing the mapping
 
 Separately, the element column of a *basic (non-enum) collection* (e.g. `static hasMany = [items: String]`) is now resolved through the naming strategy's *column* naming rules instead of its *table* naming rules for the property-name prefix, producing a `<property>_<element-type identifier>` column name. An enum collection is unaffected: its element column has no property-name prefix and already used the column naming rules before this change. Most naming strategies apply the same transformation to both, so this only matters if your custom `PhysicalNamingStrategy` implements `toPhysicalColumnName` and `toPhysicalTableName` differently.
 
+===== 26.10 Table-per-Hierarchy Discriminator Defaults
+
+A table-per-hierarchy tree with no discriminator mapping uses the same defaults as Grails 7: a column named `class` that stores the fully qualified name of each class. Tables created by Grails 7 need no change.
+
+8.0.0-RC1 and 8.0.0-RC2 named the column `DTYPE` and stored the simple name of each subclass, for example `com.example.Vehicle`, `Car` and `SportsCar`. A table created by either release candidate now fails `dbCreate: 'validate'` with `missing column [class]`, and its subclass rows no longer match. To keep that layout without migrating the data, map the column on the root class and the simple name on each subclass:
+
+[source,groovy]
+----
+class Vehicle {
+    static mapping = {
+        discriminator column: 'DTYPE'    // the root value stays the fully qualified class name
+    }
+}
+
+class Car extends Vehicle {
+    static mapping = {
+        discriminator 'Car'
+    }
+}
+
+class SportsCar extends Car {
+    static mapping = {
+        discriminator 'SportsCar'
+    }
+}
+----
+
 ==== 27. GORM Properties Are Nullable by Default
 
 Grails 8 changes the validation default so that an *unconstrained persistent (domain) property is nullable by default* rather than required.
