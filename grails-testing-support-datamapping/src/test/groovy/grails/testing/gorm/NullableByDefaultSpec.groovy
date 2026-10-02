@@ -22,9 +22,8 @@ import spock.lang.Specification
 
 class NullableByDefaultSpec extends Specification implements DomainUnitTest<NullableTestRecord> {
 
-    @Override
-    Class<?>[] getDomainClassesToMock() {
-        [NullableTestRecord, NullableTestAuthor] as Class<?>[]
+    void setupSpec() {
+        mockDomain(NullableTestAuthor)
     }
 
     void 'domain properties are nullable by default but explicit required constraints still apply'() {

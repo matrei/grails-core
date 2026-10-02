@@ -22,13 +22,13 @@ import spock.lang.Specification
 
 class RequiredByDefaultSpec extends Specification implements DomainUnitTest<NullableTestRecord> {
 
-    Closure doWithConfig() {
-        { config -> config.grails.gorm.default.nullable = false }
-    }
-
     @Override
-    Class<?>[] getDomainClassesToMock() {
-        [NullableTestRecord, NullableTestAuthor] as Class<?>[]
+    Closure doWithConfig() {{ config ->
+        config.grails.gorm.default.nullable = false
+    }}
+
+    void setupSpec() {
+        mockDomain(NullableTestAuthor)
     }
 
     void 'domain validation honors the configured required default and explicit nullable constraints'() {

@@ -1442,20 +1442,6 @@ grails:
             nullable: false
 ----
 
-Domains mocked with `DataTest` or `DomainUnitTest` use the same setting.
-Unit tests read it from `application.yml` or `application.groovy`, so they validate domains the same way as the running application.
-A specification can set it for itself in `doWithConfig`:
-
-[source,groovy]
-----
-class BookSpec extends Specification implements DomainUnitTest<Book> {
-
-    Closure doWithConfig() {
-        { config -> config.grails.gorm.default.nullable = false }
-    }
-}
-----
-
 The existing `grails.gorm.default.constraints` wildcard form also works:
 
 [source,groovy]
@@ -1463,6 +1449,21 @@ The existing `grails.gorm.default.constraints` wildcard form also works:
 ----
 grails.gorm.default.constraints = {
     '*'(nullable: false)
+}
+----
+
+Domains mocked with `DataTest` or `DomainUnitTest` use the same settings as the running application.
+They are read from `application.yml` or `application.groovy`.
+A specification can also set them in `doWithConfig`:
+
+[source,groovy]
+----
+class BookSpec extends Specification implements DomainUnitTest<Book> {
+
+    @Override
+    Closure doWithConfig() {{ config ->
+        config.grails.gorm.default.nullable = false
+    }}
 }
 ----
 
