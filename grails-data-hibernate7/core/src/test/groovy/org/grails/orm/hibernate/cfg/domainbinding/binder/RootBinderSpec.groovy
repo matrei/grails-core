@@ -27,6 +27,8 @@ import org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernatePersistentE
 import org.grails.orm.hibernate.cfg.domainbinding.util.MultiTenantFilterBinder
 import org.hibernate.boot.spi.MetadataBuildingContext
 import org.hibernate.mapping.RootClass
+import org.hibernate.mapping.SingleTableSubclass
+import spock.lang.Issue
 import org.grails.datastore.mapping.core.connections.ConnectionSource
 
 class RootBinderSpec extends HibernateGormDatastoreSpec {
@@ -113,6 +115,44 @@ class RootBinderSpec extends HibernateGormDatastoreSpec {
         1 * subClassBinder.bindSubClass(childEntity, rootClass) >> []
         1 * multiTenantFilterBinder.bind(entity, rootClass)
         mappings.getEntityBinding("Parent") == rootClass
+    }
+
+    @Issue('https://github.com/apache/grails-core/issues/16464')
+    def "test bindRoot adds each nested subclass to its direct superclass"() {
+        given:
+        def entity = Mock(HibernatePersistentEntity)
+        def childEntity = Mock(HibernatePersistentEntity)
+        entity.getName() >> "Vehicle"
+        entity.getChildEntities(ConnectionSource.DEFAULT) >> [childEntity]
+        entity.isTablePerHierarchy() >> true
+
+        def rootClass = new RootClass(metadataBuildingContext)
+        rootClass.setEntityName("Vehicle")
+        rootClass.setJpaEntityName("Vehicle")
+        def car = new SingleTableSubclass(rootClass, metadataBuildingContext)
+        car.setEntityName("Car")
+        car.setJpaEntityName("Car")
+        def sportsCar = new SingleTableSubclass(car, metadataBuildingContext)
+        sportsCar.setEntityName("SportsCar")
+        sportsCar.setJpaEntityName("SportsCar")
+        def sedan = new SingleTableSubclass(car, metadataBuildingContext)
+        sedan.setEntityName("Sedan")
+        sedan.setJpaEntityName("Sedan")
+
+        when:
+        binder.bindRoot(entity)
+
+        then:
+        1 * rootPersistentClassCommonValuesBinder.bindRoot(entity) >> rootClass
+        1 * subClassBinder.bindSubClass(childEntity, rootClass) >> [car, sportsCar, sedan]
+        rootClass.directSubclasses == [car]
+        car.directSubclasses == [sportsCar, sedan]
+        rootClass.subclasses as Set == [car, sportsCar, sedan] as Set
+        rootClass.subclasses.size() == 3
+        car.subclasses as Set == [sportsCar, sedan] as Set
+        sharedCollector.getEntityBinding("Car") == car
+        sharedCollector.getEntityBinding("SportsCar") == sportsCar
+        sharedCollector.getEntityBinding("Sedan") == sedan
     }
 
     def "test bindRoot already mapped"() {
