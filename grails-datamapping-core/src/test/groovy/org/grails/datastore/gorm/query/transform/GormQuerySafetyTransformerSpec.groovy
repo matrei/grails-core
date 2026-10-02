@@ -262,6 +262,14 @@ class Book {
         'a short-circuit operand that assigns'             | 'frag = sort\n        sort.isEmpty() || (frag = " title")'
         'a safe-navigation call argument that assigns'     | 'frag = sort\n        sorts?.add(frag = " title")'
         'a closure called after a constant reassignment'   | 'Closure reset = { frag = sort }\n        frag = " title"\n        reset()'
+        'an anonymous inner class'                         | 'Runnable r = new Runnable() {\n            void run() {\n                frag = sort\n            }\n        }\n        r.run()'
+        'an anonymous inner class initializer'             | 'Object o = new Object() {\n            {\n                frag = sort\n            }\n        }'
+        'a finally block a break out of a loop runs'       | 'for (String s in sorts) {\n            try {\n                if (s == "stop") break\n            } finally {\n                frag = sort\n            }\n            frag = " id"\n        }'
+        'a finally block a break out of a switch runs'     | 'switch (sort) {\n            case "a":\n                try {\n                    if (sorts) break\n                } finally {\n                    frag = sort\n                }\n                frag = " id"\n                break\n        }'
+        'a finally block a continue runs'                  | 'for (String s in sorts) {\n            try {\n                if (s == "skip") continue\n            } finally {\n                frag = sort\n            }\n            frag = " id"\n        }'
+        'an outer finally block a continue runs'           | 'for (String s in sorts) {\n            try {\n                try {\n                    if (s == "skip") continue\n                } finally {\n                    println(s)\n                }\n            } finally {\n                frag = sort\n            }\n            frag = " id"\n        }'
+        'a finally block an exception runs before a catch' | 'String held = " title"\n        try {\n            try {\n                frag = sort\n                println(frag)\n                frag = " id"\n            } finally {\n                held = frag\n            }\n        } catch (Exception ex) {\n            frag = held\n        }'
+        'the same finally block and catch in a loop'       | 'for (String s in sorts) {\n            String held = " title"\n            try {\n                try {\n                    frag = sort\n                    println(frag)\n                    frag = " id"\n                } finally {\n                    held = frag\n                }\n            } catch (Exception ex) {\n                frag = held\n            }\n        }'
     }
 
     void "test a variable assigned data later in a loop body is unsafe at a use earlier in it"() {
@@ -436,6 +444,35 @@ class Book {
         e.message.contains('GormUnsafeQueryString')
     }
 
+    void "test a query in a finally block sees the state a return leaves with"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List byTitle(String title) {
+        String q = "from Book"
+        try {
+            if (title) {
+                return [q = "from Book where title = ${title}"]
+            }
+            q = "from Book"
+        } finally {
+            executeQuery(q)
+        }
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.errorCollector.errorCount == 1
+        e.message.contains('GormUnsafeQueryString')
+    }
+
     @Unroll
     void "test #description compiles cleanly with no warnings"() {
         when:
@@ -465,6 +502,8 @@ class Book {
         'a query reassigned safely in a try block with a finally'     | 'String q = "from Book b where b.title = ${title}"\n        try {\n            q = "from Book b where b.title = :title"\n        } finally {\n            queryParams.title = title\n        }'
         'a branch that returns before reaching the query'             | 'String q = "from Book b"\n        if (condition) {\n            q = "from Book b where b.title = ${title}"\n            return [q]\n        }'
         'a loop iteration that returns before reaching the query'     | 'String q = "from Book b"\n        for (String t in titles) {\n            if (t == title) {\n                q = "from Book b where b.title = ${t}"\n                return [q]\n            }\n        }'
+        'a finally block that resets the query before a break lands'  | 'String q = "from Book b"\n        for (String t in titles) {\n            try {\n                q = "from Book b where b.title = ${t}"\n                if (t == title) break\n            } finally {\n                q = "from Book b where b.title = :title"\n            }\n        }'
+        'constant text appended inside an anonymous inner class'      | 'String q = "from Book b where 1 = 1"\n        Runnable r = new Runnable() {\n            void run() {\n                q += " and b.title = :title"\n            }\n        }\n        r.run()'
     }
 
     @Unroll
@@ -610,11 +649,12 @@ class Book {
         elapsedMillis < 10_000
 
         where:
-        construct                         | depth | opening                       | innermost
-        'closures'                        | 24    | 'titles.each { String t# ->'  | 'println(t1)'
-        'for loops'                       | 24    | 'for (String t# in titles) {' | 'println(t1)'
-        'for loops appending to a query'  | 24    | 'for (String t# in titles) {' | 'q += " and b.title is not null"'
-        'closures appending to a query'   | 24    | 'titles.each { String t# ->'  | 'q += " and b.title is not null"'
+        construct                         | depth | opening                        | innermost
+        'closures'                        | 24    | 'titles.each { String t# ->'   | 'println(t1)'
+        'for loops'                       | 24    | 'for (String t# in titles) {'  | 'println(t1)'
+        'for loops appending to a query'  | 24    | 'for (String t# in titles) {'  | 'q += " and b.title is not null"'
+        'closures appending to a query'   | 24    | 'titles.each { String t# ->'   | 'q += " and b.title is not null"'
+        'finally blocks'                  | 24    | 'try { println(#) } finally {' | 'println(0)'
     }
 
     void "test aliasing a plain non-interpolated variable compiles cleanly"() {

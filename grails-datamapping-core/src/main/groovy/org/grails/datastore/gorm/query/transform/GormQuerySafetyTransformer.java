@@ -21,6 +21,7 @@ package org.grails.datastore.gorm.query.transform;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -49,6 +50,7 @@ import org.codehaus.groovy.ast.expr.CastExpression;
 import org.codehaus.groovy.ast.expr.ClassExpression;
 import org.codehaus.groovy.ast.expr.ClosureExpression;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
+import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
 import org.codehaus.groovy.ast.expr.DeclarationExpression;
 import org.codehaus.groovy.ast.expr.EmptyExpression;
 import org.codehaus.groovy.ast.expr.Expression;
@@ -148,15 +150,18 @@ import org.grails.datastore.mapping.reflect.AstUtils;
  * assignment late in the body is seen by a use earlier in it, which the next iteration reaches.
  * {@code break}, {@code continue} and, in a closure, {@code return} carry their state to the
  * exit or head they jump to, and a path ending in such a jump or in {@code throw} contributes
- * nothing to the state after the statement. Locals are tracked per declaration, so a later local,
+ * nothing to the state after the statement. A jump or an exception that leaves a {@code try}
+ * statement runs its {@code finally} block first, so it carries the state that block ends with
+ * when walked from every path into it. Locals are tracked per declaration, so a later local,
  * parameter or loop variable that reuses a name never inherits the state of an earlier one.
  *
- * <p>Some assignments can run at a point the walk cannot place: inside a closure, which may be
- * called at any later point; inside another expression, such as a ternary or Elvis branch, an
- * {@code &&} or {@code ||} operand, a method argument or a loop condition; or through multiple
- * assignment. A local assigned in any of these ways, and a local declared outside a closure that
- * the closure reads, counts as constant text (there, or for a local a closure assigns,
- * anywhere) only when every assignment to it in the method is constant text.
+ * <p>Some assignments can run at a point the walk cannot place: inside a closure or the code of
+ * an anonymous inner class, which may run at any later point; inside another expression, such
+ * as a ternary or Elvis branch, an {@code &&} or {@code ||} operand, a method argument or a loop
+ * condition; or through multiple assignment. A local assigned in any of these ways, and a local
+ * declared outside a closure that the closure reads, counts as constant text (there, or for a
+ * local a closure or an anonymous inner class assigns, anywhere) only when every assignment to
+ * it in the method is constant text.
  *
  * <p>This is a build-breaking error for the local-variable case above, because the detection is
  * precise: every flattening point is visible in the method being compiled. Two related patterns
@@ -195,9 +200,11 @@ import org.grails.datastore.mapping.reflect.AstUtils;
  *     <li>Flow-sensitivity applies to locals only; field tracking is last-write-wins in source
  *     order. Outside constant-text tracking, a closure body is analysed with the state at the
  *     point the closure is defined, so a local flattened between the definition and the call is
- *     not seen inside it. Reachability is approximated: a path is treated as not continuing only
- *     when its block ends in {@code return}, {@code throw}, {@code break} or
- *     {@code continue}.</li>
+ *     not seen inside it. An anonymous inner class is analysed as a class of its own, so a local
+ *     of the enclosing method that it reads is treated as data there, and one that it flattens is
+ *     not seen as flattened by the enclosing method. Reachability is approximated: a path is
+ *     treated as not continuing only when its block ends in {@code return}, {@code throw},
+ *     {@code break} or {@code continue}.</li>
  *     <li>Field tracking only recognizes a directly-interpolated {@code GString} initializer or
  *     {@code this.field = ...} assignment - it does not follow aliasing chains or
  *     {@code .toString()}/cast coercions the way local tracking does.</li>
@@ -301,6 +308,12 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
      * can carry to a {@code catch} or {@code finally} block.
      */
     private final List<TrackingSnapshot> exceptionalStates = new ArrayList<>();
+    /**
+     * The {@code try} statements with a {@code finally} block whose {@code try} or {@code catch}
+     * blocks are being walked, innermost first, holding the jumps out of them until the
+     * {@code finally} block has run.
+     */
+    private final Deque<FinallyFrame> finallyFrames = new ArrayDeque<>();
     /** Above zero while a body is re-walked to settle its state; findings are reported only at zero. */
     private int silentPasses;
     private ClassNode currentClassNode;
@@ -541,29 +554,47 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
      * Visits a {@code try} statement. An exception can leave the {@code try} block after any
      * statement, so each {@code catch} block starts from the merge of every state the block
      * passed through (accumulated by {@link #visitStatement}). The {@code finally} block runs
-     * after any of those states, or any state a {@code catch} block passed through, and is
-     * checked against all of them; but only a {@code try} or {@code catch} block that completes
-     * normally continues past the statement, so the state afterwards is derived from those paths
-     * alone.
+     * after any of those states, any state a {@code catch} block passed through, or any state a
+     * jump out of the statement leaves with, and is checked against all of them. Only a
+     * {@code try} or {@code catch} block that completes normally continues past the statement,
+     * so the state afterwards is derived from those paths alone. Every other way out - a jump,
+     * which lands only once the {@code finally} block has run, or an exception - leaves with the
+     * state the {@code finally} block ends with when walked from every path into it.
      */
     @Override
     public void visitTryCatchFinally(TryCatchStatement statement) {
         visitStatement(statement);
-        TrackingSnapshot inTry = accumulateStates(() -> {
-            for (Statement resource : statement.getResourceStatements()) {
-                resource.visit(this);
-            }
-            statement.getTryStatement().visit(this);
-        });
-        TrackingSnapshot afterTry = snapshot();
-        TrackingSnapshot normalExits = normalExit(statement.getTryStatement(), afterTry);
-        TrackingSnapshot intoFinally = inTry;
-        for (CatchStatement catchStatement : statement.getCatchStatements()) {
-            restore(inTry);
-            intoFinally = merge(intoFinally, accumulateStates(() -> catchStatement.visit(this)));
-            normalExits = merge(normalExits, normalExit(catchStatement.getCode(), snapshot()));
-        }
         Statement finallyStatement = statement.getFinallyStatement();
+        FinallyFrame frame = finallyStatement.isEmpty() ? null : new FinallyFrame(jumpTargets);
+        if (frame != null) {
+            finallyFrames.push(frame);
+        }
+        TrackingSnapshot normalExits;
+        TrackingSnapshot intoFinally;
+        try {
+            TrackingSnapshot inTry = accumulateStates(() -> {
+                for (Statement resource : statement.getResourceStatements()) {
+                    resource.visit(this);
+                }
+                statement.getTryStatement().visit(this);
+            });
+            normalExits = normalExit(statement.getTryStatement(), snapshot());
+            intoFinally = inTry;
+            for (CatchStatement catchStatement : statement.getCatchStatements()) {
+                restore(inTry);
+                intoFinally = merge(intoFinally, accumulateStates(() -> catchStatement.visit(this)));
+                normalExits = merge(normalExits, normalExit(catchStatement.getCode(), snapshot()));
+            }
+        } finally {
+            if (frame != null) {
+                finallyFrames.pop();
+            }
+        }
+        if (frame == null) {
+            restore(normalExits, intoFinally);
+            return;
+        }
+        intoFinally = merge(intoFinally, frame.jumpStates);
         TrackingSnapshot afterFinally = null;
         if (normalExits != null) {
             silentPasses++;
@@ -573,7 +604,16 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
                 silentPasses--;
             }
         }
-        walkFrom(intoFinally, finallyStatement);
+        // In a silent pass the findings of this walk are dropped, so it is needed only for the
+        // state it ends with, when a jump or an enclosing handler takes it. Skipping it otherwise
+        // keeps nested finally blocks from being walked an exponential number of times.
+        if (silentPasses == 0 || afterFinally == null || !frame.jumps.isEmpty() || !exceptionalStates.isEmpty()) {
+            TrackingSnapshot abruptExit = walkFrom(intoFinally, finallyStatement);
+            addExceptionalState(abruptExit);
+            for (Jump jump : frame.jumps) {
+                jump(jump.target, jump.toHead, abruptExit);
+            }
+        }
         restore(afterFinally, snapshot());
     }
 
@@ -600,10 +640,17 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     @Override
     protected void visitStatement(Statement statement) {
         if (!exceptionalStates.isEmpty()) {
-            TrackingSnapshot current = snapshot();
-            for (int i = 0; i < exceptionalStates.size(); i++) {
-                exceptionalStates.set(i, merge(exceptionalStates.get(i), current));
-            }
+            addExceptionalState(snapshot());
+        }
+    }
+
+    /**
+     * Adds {@code state} to every entry of {@link #exceptionalStates}: an exception may leave the
+     * code being walked with it.
+     */
+    private void addExceptionalState(TrackingSnapshot state) {
+        for (int i = 0; i < exceptionalStates.size(); i++) {
+            exceptionalStates.set(i, merge(exceptionalStates.get(i), state));
         }
     }
 
@@ -718,7 +765,7 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
         super.visitBreakStatement(statement);
         JumpTarget target = jumpTarget(statement.getLabel(), false);
         if (target != null) {
-            target.exit = merge(target.exit, snapshot());
+            jump(target, false, snapshot());
         }
     }
 
@@ -727,7 +774,7 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
         super.visitContinueStatement(statement);
         JumpTarget target = jumpTarget(statement.getLabel(), true);
         if (target != null) {
-            target.head = merge(target.head, snapshot());
+            jump(target, true, snapshot());
         }
     }
 
@@ -735,11 +782,41 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     public void visitReturnStatement(ReturnStatement statement) {
         super.visitReturnStatement(statement);
         // Returning from a closure ends one run of its body; the next run starts from its head.
+        JumpTarget closure = null;
         for (JumpTarget target : jumpTargets) {
             if (target.kind == JumpTarget.Kind.CLOSURE) {
-                target.head = merge(target.head, snapshot());
+                closure = target;
                 break;
             }
+        }
+        if (closure != null) {
+            jump(closure, true, snapshot());
+        }
+        else if (!finallyFrames.isEmpty()) {
+            // A return from the method lands nowhere this check follows, but the finally blocks
+            // it leaves run first, from the state it returns with.
+            FinallyFrame frame = finallyFrames.peek();
+            frame.jumpStates = merge(frame.jumpStates, snapshot());
+        }
+    }
+
+    /**
+     * Carries {@code state} to the head or the exit of {@code target}. A jump out of a
+     * {@code try} statement with a {@code finally} block lands only once that block has run, so
+     * it is held by the statement's {@link FinallyFrame} instead, and carried on from the state
+     * the {@code finally} block ends with (see {@link #visitTryCatchFinally}).
+     */
+    private void jump(JumpTarget target, boolean toHead, TrackingSnapshot state) {
+        FinallyFrame frame = finallyFrames.peek();
+        if (frame != null && frame.outerTargets.contains(target)) {
+            frame.jumps.add(new Jump(target, toHead));
+            frame.jumpStates = merge(frame.jumpStates, state);
+        }
+        else if (toHead) {
+            target.head = merge(target.head, state);
+        }
+        else {
+            target.exit = merge(target.exit, state);
         }
     }
 
@@ -917,6 +994,37 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
     }
 
     /**
+     * A {@code try} statement with a {@code finally} block whose {@code try} or {@code catch}
+     * blocks are being walked, with the jumps out of it that land only once the {@code finally}
+     * block has run.
+     */
+    private static final class FinallyFrame {
+
+        /** The jump targets enclosing the statement: a jump from inside it to one of these leaves it. */
+        final Set<JumpTarget> outerTargets;
+        /** The jumps out of the statement, each to the head or the exit of one of {@link #outerTargets}. */
+        final List<Jump> jumps = new ArrayList<>();
+        /** The merge of the states the jumps and returns out of the statement leave with. */
+        TrackingSnapshot jumpStates;
+
+        FinallyFrame(Collection<JumpTarget> outerTargets) {
+            this.outerTargets = new HashSet<>(outerTargets);
+        }
+    }
+
+    /** A jump held by a {@link FinallyFrame}: to the head of its target, or to its exit. */
+    private static final class Jump {
+
+        final JumpTarget target;
+        final boolean toHead;
+
+        Jump(JumpTarget target, boolean toHead) {
+            this.target = target;
+            this.toHead = toHead;
+        }
+    }
+
+    /**
      * An assignment to a local found by the pre-scan: the value assigned, or {@code null} for an
      * assignment that is not string building this check understands.
      */
@@ -946,8 +1054,8 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
         /**
          * The locals assigned where the walk cannot place the assignment in order: inside another
          * expression (a ternary or Elvis branch, an {@code &&} or {@code ||} operand, a method
-         * argument, a loop condition), by multiple assignment, or inside a closure that does not
-         * declare them, which may run at any later point.
+         * argument, a loop condition), by multiple assignment, or inside a closure or an anonymous
+         * inner class that does not declare them, which may run at any later point.
          */
         final Set<Object> unordered = new HashSet<>();
         /** The locals and parameters each closure declares. */
@@ -982,6 +1090,42 @@ public class GormQuerySafetyTransformer extends ClassCodeVisitorSupport {
             closureScopes.push(locals);
             try {
                 scanBody(expression.getCode(), locals, () -> super.visitClosureExpression(expression));
+            } finally {
+                closureScopes.pop();
+            }
+        }
+
+        /**
+         * The class is checked on its own, as a separate class, but its code may run at any point
+         * after it is created, like a closure's, and assign locals declared outside it.
+         */
+        @Override
+        public void visitConstructorCallExpression(ConstructorCallExpression call) {
+            super.visitConstructorCallExpression(call);
+            if (!call.isUsingAnonymousInnerClass()) {
+                return;
+            }
+            ClassNode type = call.getType();
+            Set<Object> locals = new HashSet<>();
+            for (MethodNode method : type.getMethods()) {
+                locals.addAll(Arrays.asList(method.getParameters()));
+            }
+            closureScopes.push(locals);
+            try {
+                for (FieldNode field : type.getFields()) {
+                    Expression initial = field.getInitialValueExpression();
+                    if (initial != null) {
+                        initial.visit(this);
+                    }
+                }
+                for (Statement statement : type.getObjectInitializerStatements()) {
+                    statement.visit(this);
+                }
+                for (MethodNode method : type.getMethods()) {
+                    if (method.getCode() != null) {
+                        method.getCode().visit(this);
+                    }
+                }
             } finally {
                 closureScopes.pop();
             }
