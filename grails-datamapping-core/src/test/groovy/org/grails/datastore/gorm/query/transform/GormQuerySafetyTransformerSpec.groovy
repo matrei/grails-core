@@ -257,6 +257,11 @@ class Book {
         'a loop that continues after the assignment'       | 'for (String s in sorts) { if (s) { frag = s; continue } }'
         'a closure'                                        | 'sorts.each { frag = it }'
         'a closure that returns after the assignment'      | 'sorts.each { frag = it; return }'
+        'a multiple assignment'                            | 'def other\n        (frag, other) = [sort, 1]'
+        'a ternary that assigns'                           | 'sort ? (frag = sort) : (frag = " title")'
+        'a short-circuit operand that assigns'             | 'frag = sort\n        sort.isEmpty() || (frag = " title")'
+        'a safe-navigation call argument that assigns'     | 'frag = sort\n        sorts?.add(frag = " title")'
+        'a closure called after a constant reassignment'   | 'Closure reset = { frag = sort }\n        frag = " title"\n        reset()'
     }
 
     void "test a variable assigned data later in a loop body is unsafe at a use earlier in it"() {
@@ -462,6 +467,156 @@ class Book {
         'a loop iteration that returns before reaching the query'     | 'String q = "from Book b"\n        for (String t in titles) {\n            if (t == title) {\n                q = "from Book b where b.title = ${t}"\n                return [q]\n            }\n        }'
     }
 
+    @Unroll
+    void "test a use inside #construct sees data assigned where the walk cannot place it"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void sorted(String sort, List<String> sorts) {
+        String frag = " title"
+        $body
+    }
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                   | body
+        'a do/while body assigned in its condition' | 'do {\n            String q = "from Book order by ${frag}"\n            executeQuery(q)\n        } while ((frag = sorts.remove(0)) != null)'
+        'a closure called after a reassignment'     | 'Closure run = {\n            String q = "from Book order by ${frag}"\n            executeQuery(q)\n        }\n        frag = sort\n        run()'
+    }
+
+    @Unroll
+    void "test #construct reusing the name of an earlier constant local is not treated as constant text"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void sorted(String sort, List<String> sorts) {
+        $body
+    }
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                | body
+        'a loop variable after a try block'      | 'try {\n            String part = " title"\n        } finally {\n        }\n        for (String part in sorts) {\n            String q = "from Book order by ${part}"\n            executeQuery(q)\n        }'
+        'a loop variable after an if/else'       | 'if (sort) {\n            String part = " id"\n        } else {\n            String part = " title"\n        }\n        for (String part in sorts) {\n            String q = "from Book order by ${part}"\n            executeQuery(q)\n        }'
+        'a closure parameter after an if/else'   | 'if (sort) {\n            String part = " id"\n        } else {\n            String part = " title"\n        }\n        sorts.each { String part ->\n            String q = "from Book order by ${part}"\n            executeQuery(q)\n        }'
+    }
+
+    @Unroll
+    void "test a query flattened inside a closure is still flagged when #construct"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void byTitle(List<String> titles, String title) {
+        String q = "from Book"
+        $body
+    }
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                        | body
+        'it is used after the closure is called'         | 'Closure flatten = { q = "from Book where title = ${title}" }\n        flatten()\n        executeQuery(q)'
+        'a later run of the closure reaches the use'     | 'titles.each {\n            executeQuery(q)\n            q = "from Book where title = ${it}"\n        }'
+        'the closure returns after flattening it'        | 'Closure flatten = {\n            if (title) {\n                q = "from Book where title = ${title}"\n                return\n            }\n            q = "from Book"\n        }\n        flatten()\n        executeQuery(q)'
+    }
+
+    void "test a constant local read inside a closure compiles cleanly with no warnings"() {
+        when:
+        List<WarningMessage> warnings = compileAndCollectWarnings('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void search(List<String> titles, Map queryParams) {
+        String restriction = ""
+        if (queryParams.title) {
+            restriction = " and b.title = :title"
+        }
+        titles.each { String t ->
+            String q = "from Book b where b.title <> :t ${restriction}"
+            executeQuery(q, queryParams + [t: t])
+        }
+    }
+}
+''')
+
+        then:
+        warnings.empty
+    }
+
+    @Unroll
+    void "test #construct nested #depth deep compiles without the check slowing it down exponentially"() {
+        given:
+        String open = (1..depth).collect { opening.replace('#', it.toString()) }.join('\n')
+        String close = (1..depth).collect { '}' }.join('\n')
+        String source = """
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static List search(List<String> titles) {
+        String q = "from Book b where 1 = 1"
+        $open
+        $innermost
+        $close
+        executeQuery(q)
+    }
+}
+"""
+
+        when:
+        long started = System.nanoTime()
+        List<WarningMessage> warnings = compileAndCollectWarnings(source)
+        long elapsedMillis = (System.nanoTime() - started).intdiv(1_000_000)
+
+        then: 'every level walked twice would take minutes at this depth'
+        warnings.empty
+        elapsedMillis < 10_000
+
+        where:
+        construct                         | depth | opening                       | innermost
+        'closures'                        | 24    | 'titles.each { String t# ->'  | 'println(t1)'
+        'for loops'                       | 24    | 'for (String t# in titles) {' | 'println(t1)'
+        'for loops appending to a query'  | 24    | 'for (String t# in titles) {' | 'q += " and b.title is not null"'
+        'closures appending to a query'   | 24    | 'titles.each { String t# ->'  | 'q += " and b.title is not null"'
+    }
+
     void "test aliasing a plain non-interpolated variable compiles cleanly"() {
         when:
         Class<?> bookClass = new GroovyClassLoader().parseClass('''
@@ -535,6 +690,59 @@ class Book {
     static List byTitle(String title) {
         String q = "from Book where title = ${title}"
         executeQuery(q)
+    }
+}
+''')
+
+        then:
+        bookClass != null
+    }
+
+    void "test a flattened query in a constructor fails to compile"() {
+        when:
+        new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+}
+
+class BookReport {
+
+    List books
+
+    BookReport(String title) {
+        String q = "from Book where title = ${title}"
+        books = Book.executeQuery(q)
+    }
+}
+''')
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+    }
+
+    void "test a flattened query suppressed on its constructor compiles cleanly"() {
+        when:
+        Class<?> bookClass = new GroovyClassLoader().parseClass('''
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+}
+
+class BookReport {
+
+    List books
+
+    @SuppressWarnings("GormUnsafeQueryString")
+    BookReport(String title) {
+        String q = "from Book where title = ${title}"
+        books = Book.executeQuery(q)
     }
 }
 ''')
@@ -824,6 +1032,8 @@ class Book {
         'a cast of constant text'                    | 'String restriction = (String) " and b.title = :title"'
         'toString() of constant text'                | 'String restriction = " and b.title = :title".toString()'
         'a two-hop alias of constant text'           | 'def first = " and b.title = :title"\n        def second = first\n        String restriction = second'
+        'a ternary that assigns constant text'       | 'String restriction\n        condition ? (restriction = " and b.title = :title") : (restriction = "")'
+        'constant text appended inside a closure'    | 'String restriction = ""\n        params.each { restriction += " and b.title = :title" }'
     }
 
     @Unroll
