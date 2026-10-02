@@ -1442,9 +1442,19 @@ grails:
             nullable: false
 ----
 
-This setting also applies to domains mocked through `DataTest` and `DomainUnitTest`.
-Check that unit-test configuration supplies the same setting as the running application;
-fixtures that build required associations depend on the evaluated nullable constraints.
+Domains mocked with `DataTest` or `DomainUnitTest` use the same setting.
+Unit tests read it from `application.yml` or `application.groovy`, so they validate domains the same way as the running application.
+A specification can set it for itself in `doWithConfig`:
+
+[source,groovy]
+----
+class BookSpec extends Specification implements DomainUnitTest<Book> {
+
+    Closure doWithConfig() {
+        { config -> config.grails.gorm.default.nullable = false }
+    }
+}
+----
 
 The existing `grails.gorm.default.constraints` wildcard form also works:
 

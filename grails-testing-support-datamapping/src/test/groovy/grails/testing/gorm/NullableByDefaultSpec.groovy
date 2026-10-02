@@ -22,19 +22,26 @@ import spock.lang.Specification
 
 class NullableByDefaultSpec extends Specification implements DomainUnitTest<NullableTestRecord> {
 
+    @Override
+    Class<?>[] getDomainClassesToMock() {
+        [NullableTestRecord, NullableTestAuthor] as Class<?>[]
+    }
+
     void 'domain properties are nullable by default but explicit required constraints still apply'() {
         expect:
         !domain.validate()
         domain.errors.getFieldError('requiredName').code == 'nullable'
         !domain.errors.hasFieldErrors('name')
+        !domain.errors.hasFieldErrors('author')
         !domain.errors.hasFieldErrors('optionalName')
 
         when:
         domain.requiredName = 'required'
 
         then:
-        domain.save()
+        domain.save(flush: true)
         NullableTestRecord.count() == 1
+        NullableTestRecord.first().author == null
     }
 
     void 'the domain nullable default does not make command object properties optional'() {

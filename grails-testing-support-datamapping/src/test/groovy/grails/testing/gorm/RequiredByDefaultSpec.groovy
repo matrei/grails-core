@@ -20,13 +20,15 @@ package grails.testing.gorm
 
 import spock.lang.Specification
 
-import grails.gorm.annotation.Entity
-import grails.validation.Validateable
-
 class RequiredByDefaultSpec extends Specification implements DomainUnitTest<NullableTestRecord> {
 
     Closure doWithConfig() {
         { config -> config.grails.gorm.default.nullable = false }
+    }
+
+    @Override
+    Class<?>[] getDomainClassesToMock() {
+        [NullableTestRecord, NullableTestAuthor] as Class<?>[]
     }
 
     void 'domain validation honors the configured required default and explicit nullable constraints'() {
@@ -34,15 +36,18 @@ class RequiredByDefaultSpec extends Specification implements DomainUnitTest<Null
         !domain.validate()
         domain.errors.getFieldError('name').code == 'nullable'
         domain.errors.getFieldError('requiredName').code == 'nullable'
+        domain.errors.getFieldError('author').code == 'nullable'
         !domain.errors.hasFieldErrors('optionalName')
 
         when:
         domain.name = 'record'
         domain.requiredName = 'required'
+        domain.author = new NullableTestAuthor(name: 'author').save(flush: true)
 
         then:
-        domain.save()
+        domain.save(flush: true)
         NullableTestRecord.count() == 1
+        NullableTestRecord.first().author.name == 'author'
     }
 
     void 'command object properties remain required'() {
@@ -53,20 +58,4 @@ class RequiredByDefaultSpec extends Specification implements DomainUnitTest<Null
         !command.validate()
         command.errors.getFieldError('name').code == 'nullable'
     }
-}
-
-@Entity
-class NullableTestRecord implements Serializable {
-    String name
-    String requiredName
-    String optionalName
-
-    static constraints = {
-        requiredName nullable: false
-        optionalName nullable: true
-    }
-}
-
-class NullableTestCommand implements Validateable {
-    String name
 }
