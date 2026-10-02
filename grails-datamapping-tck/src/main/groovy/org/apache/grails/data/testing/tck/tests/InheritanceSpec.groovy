@@ -30,7 +30,6 @@ import org.apache.grails.data.testing.tck.domains.Location
 import org.apache.grails.data.testing.tck.domains.Practice
 import org.grails.datastore.mapping.proxy.ProxyHandler
 import spock.lang.Issue
-import spock.lang.PendingFeatureIf
 
 /**
  * @author graemerocher
@@ -142,7 +141,6 @@ class InheritanceSpec extends GrailsDataTckSpec {
         FleetSedan.count() == 1
     }
 
-    @PendingFeatureIf({ Boolean.getBoolean('mongodb.gorm.suite') })
     void 'Test loading a superclass instance through a subclass returns null'() {
         given:
         def vehicle = new FleetVehicle(name: 'vehicle').save()
