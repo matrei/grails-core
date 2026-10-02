@@ -504,6 +504,14 @@ class Book {
         'a loop iteration that returns before reaching the query'     | 'String q = "from Book b"\n        for (String t in titles) {\n            if (t == title) {\n                q = "from Book b where b.title = ${t}"\n                return [q]\n            }\n        }'
         'a finally block that resets the query before a break lands'  | 'String q = "from Book b"\n        for (String t in titles) {\n            try {\n                q = "from Book b where b.title = ${t}"\n                if (t == title) break\n            } finally {\n                q = "from Book b where b.title = :title"\n            }\n        }'
         'constant text appended inside an anonymous inner class'      | 'String q = "from Book b where 1 = 1"\n        Runnable r = new Runnable() {\n            void run() {\n                q += " and b.title = :title"\n            }\n        }\n        r.run()'
+        'constant text read inside an anonymous inner class'          | 'String restriction = condition ? " and b.title = :title" : ""\n        Runnable r = new Runnable() {\n            void run() {\n                String inner = "from Book b where 1 = 1 ${restriction}"\n                Book.executeQuery(inner, queryParams)\n            }\n        }\n        r.run()\n        String q = "from Book b"'
+        'constant text chosen by a switch expression'                 | 'String restriction = switch (title) {\n            case "" -> ""\n            default -> " and b.title = :title"\n        }\n        String q = "from Book b where 1 = 1 ${restriction}"'
+        'constant text yielded by a switch expression block'          | 'String restriction = switch (title) {\n            case "" -> { yield "" }\n            default -> { yield " and b.title = :title" }\n        }\n        String q = "from Book b where 1 = 1 ${restriction}"'
+        'constant text in a local a switch expression block yields'   | 'String restriction = switch (title) {\n            case "" -> ""\n            default -> {\n                String fragment = " and b.title = :title"\n                yield fragment\n            }\n        }\n        String q = "from Book b where 1 = 1 ${restriction}"'
+        'constant text returned by a closure called on the spot'      | 'String restriction = {\n            if (condition) {\n                " and b.title = :title"\n            } else {\n                ""\n            }\n        }()\n        String q = "from Book b where 1 = 1 ${restriction}"'
+        'constant text assigned by a multiple-assignment declaration' | 'def (String restriction, String order) = [" and b.title = :title", " order by b.title"]\n        String q = "from Book b where 1 = 1 ${restriction}${order}"'
+        'a GString passed directly from inside a closure'             | 'def g = "from Book b where b.title = ${title}"\n        Book.withTransaction {\n            executeQuery(g)\n        }\n        String q = "from Book b"'
+        'a ternary choosing between GStrings passed directly'         | 'executeQuery(condition ? "from Book b where b.title = ${title}" : "from Book b")\n        String q = "from Book b"'
     }
 
     @Unroll
@@ -532,6 +540,9 @@ class Book {
         construct                                   | body
         'a do/while body assigned in its condition' | 'do {\n            String q = "from Book order by ${frag}"\n            executeQuery(q)\n        } while ((frag = sorts.remove(0)) != null)'
         'a closure called after a reassignment'     | 'Closure run = {\n            String q = "from Book order by ${frag}"\n            executeQuery(q)\n        }\n        frag = sort\n        run()'
+        'a closure called after a flattening'       | 'String q = "from Book"\n        Closure run = {\n            executeQuery(q)\n        }\n        q = "from Book order by ${sort}"\n        run()'
+        'an anonymous inner class'                  | 'String q = "from Book order by ${sort}"\n        Runnable run = new Runnable() {\n            void run() {\n                Book.executeQuery(q)\n            }\n        }\n        run.run()'
+        'an anonymous inner class run later'        | 'Runnable run = new Runnable() {\n            void run() {\n                String q = "from Book order by ${frag}"\n                Book.executeQuery(q)\n            }\n        }\n        frag = sort\n        run.run()'
     }
 
     @Unroll
@@ -589,6 +600,98 @@ class Book {
         'it is used after the closure is called'         | 'Closure flatten = { q = "from Book where title = ${title}" }\n        flatten()\n        executeQuery(q)'
         'a later run of the closure reaches the use'     | 'titles.each {\n            executeQuery(q)\n            q = "from Book where title = ${it}"\n        }'
         'the closure returns after flattening it'        | 'Closure flatten = {\n            if (title) {\n                q = "from Book where title = ${title}"\n                return\n            }\n            q = "from Book"\n        }\n        flatten()\n        executeQuery(q)'
+    }
+
+    @Unroll
+    void "test a query flattened #construct fails to compile"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    static void byTitle(List<String> titles, String title, boolean condition) {
+        String q = "from Book"
+        $body
+    }
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                     | body
+        'in one branch of a ternary initializer'      | 'String chosen = condition ? "from Book where title = ${title}" : "from Book"\n        executeQuery(chosen)'
+        'in an Elvis initializer'                     | 'String chosen = "from Book where title = ${title}" ?: "from Book"\n        executeQuery(chosen)'
+        'in one branch of a ternary passed directly'  | 'String flattened = "from Book where title = ${title}"\n        executeQuery(condition ? flattened : q)'
+        'in a ternary concatenated onto the query'    | 'String chosen = "from Book" + (condition ? " where title = ${title}" : "")\n        executeQuery(chosen)'
+        'in an arm of a switch expression'            | 'String chosen = switch (title) {\n            case "a" -> "from Book where title = ${title}"\n            default -> "from Book"\n        }\n        executeQuery(chosen)'
+        'in a local a switch expression block yields' | 'String chosen = switch (title) {\n            case "a" -> {\n                String flattened = "from Book where title = ${title}"\n                yield flattened\n            }\n            default -> "from Book"\n        }\n        executeQuery(chosen)'
+        'in a result of a closure called on the spot' | 'String chosen = {\n            if (condition) {\n                "from Book where title = ${title}"\n            } else {\n                "from Book"\n            }\n        }()\n        executeQuery(chosen)'
+        'in a ternary branch that assigns it'         | 'condition ? (q = "from Book where title = ${title}") : (q = "from Book")\n        executeQuery(q)'
+        'by a multiple assignment'                    | 'def other\n        (q, other) = ["from Book where title = ${title}", 1]\n        executeQuery(q)'
+        'by a multiple-assignment declaration'        | 'def (String chosen, other) = ["from Book where title = ${title}", 1]\n        executeQuery(chosen)'
+        'in a do/while condition'                     | 'do {\n            executeQuery(q)\n        } while ((q = "from Book where title = ${titles.remove(0)}") != null)'
+        'in a closure called after a reset'           | 'Closure flatten = { q = "from Book where title = ${title}" }\n        q = "from Book"\n        flatten()\n        executeQuery(q)'
+        'in an anonymous inner class'                 | 'Runnable flatten = new Runnable() {\n            void run() {\n                q = "from Book where title = ${title}"\n            }\n        }\n        flatten.run()\n        executeQuery(q)'
+    }
+
+    @Unroll
+    void "test a query called on this in #construct inside a domain class fails to compile"() {
+        when:
+        new GroovyClassLoader().parseClass("""
+import grails.gorm.annotation.Entity
+
+@Entity
+class Book {
+    String title
+
+    $member
+}
+""")
+
+        then:
+        def e = thrown(MultipleCompilationErrorsException)
+        e.message.contains('GormUnsafeQueryString')
+        e.message.contains("passed to 'executeQuery'")
+
+        where:
+        construct                                   | member
+        'an anonymous inner class, this implied'    | 'static void byTitle(String title) {\n        Runnable r = new Runnable() {\n            void run() {\n                String q = "from Book where title = ${title}"\n                executeQuery(q)\n            }\n        }\n        r.run()\n    }'
+        'an anonymous inner class, this written'    | 'static void byTitle(String title) {\n        Runnable r = new Runnable() {\n            void run() {\n                String q = "from Book where title = ${title}"\n                this.executeQuery(q)\n            }\n        }\n        r.run()\n    }'
+        'a static nested class'                     | 'static class Finder {\n        List byTitle(String title) {\n            String q = "from Book where title = ${title}"\n            executeQuery(q)\n        }\n    }'
+        'an inner class'                            | 'class Finder {\n        List byTitle(String title) {\n            String q = "from Book where title = ${title}"\n            executeQuery(q)\n        }\n    }'
+    }
+
+    @Unroll
+    void "test #construct inside a domain class compiles cleanly with no warnings"() {
+        when:
+        List<WarningMessage> warnings = compileAndCollectWarnings("""
+import grails.gorm.annotation.Entity
+
+@Entity
+$annotation
+class Book {
+    String title
+
+    $member
+}
+""")
+
+        then:
+        warnings.empty
+
+        where:
+        construct                                                              | annotation                                   | member
+        'a nested class calling its own find method'                           | ''                                           | 'static class Finder {\n        List find(String query) { [] }\n        List byTitle(String title) {\n            String q = "from Book where title = ${title}"\n            find(q)\n        }\n    }'
+        'a flattened query in an anonymous inner class of a suppressed method' | ''                                           | '@SuppressWarnings("GormUnsafeQueryString")\n    static void byTitle(String title) {\n        Runnable r = new Runnable() {\n            void run() {\n                String q = "from Book where title = ${title}"\n                executeQuery(q)\n            }\n        }\n        r.run()\n    }'
+        'a flattened query in a nested class of a suppressed class'            | '@SuppressWarnings("GormUnsafeQueryString")' | 'static class Finder {\n        List byTitle(String title) {\n            String q = "from Book where title = ${title}"\n            executeQuery(q)\n        }\n    }'
+        'a suppressed local read in an anonymous inner class'                  | ''                                           | 'static void byTitle(String title) {\n        @SuppressWarnings("GormUnsafeQueryString")\n        String q = "from Book where title = ${title}"\n        Runnable r = new Runnable() {\n            void run() {\n                executeQuery(q)\n            }\n        }\n        r.run()\n    }'
     }
 
     void "test a constant local read inside a closure compiles cleanly with no warnings"() {
